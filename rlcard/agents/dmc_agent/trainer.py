@@ -210,6 +210,7 @@ class DMCTrainer:
                 self.action_shape,
                 self.device_iterator,
             )
+            print()
         else:
             buffers = create_buffers_pettingzoo(
                 self.T,
@@ -286,6 +287,7 @@ class DMCTrainer:
                     self.B,
                     local_lock
                 )
+                print()
                 _stats = learn(
                     position,
                     models,

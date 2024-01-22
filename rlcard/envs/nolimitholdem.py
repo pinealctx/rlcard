@@ -9,10 +9,11 @@ from rlcard.games.nolimitholdem import Game
 from rlcard.games.nolimitholdem.round import Action
 
 DEFAULT_GAME_CONFIG = {
-        'game_num_players': 2,
-        'chips_for_each': 100,
-        'dealer_id': None,
-        }
+    'game_num_players': 5,
+    'chips_for_each': 100,
+    'dealer_id': None,
+}
+
 
 class NolimitholdemEnv(Env):
     ''' Limitholdem Environment
@@ -115,5 +116,3 @@ class NolimitholdemEnv(Env):
         state['current_player'] = self.game.game_pointer
         state['legal_actions'] = self.game.get_legal_actions()
         return state
-
-

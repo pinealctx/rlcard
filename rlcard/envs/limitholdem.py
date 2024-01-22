@@ -8,8 +8,9 @@ from rlcard.envs import Env
 from rlcard.games.limitholdem import Game
 
 DEFAULT_GAME_CONFIG = {
-        'game_num_players': 2,
-        }
+    'game_num_players': 2,
+}
+
 
 class LimitholdemEnv(Env):
     ''' Limitholdem Environment

@@ -8,8 +8,8 @@ import torch
 import rlcard
 from rlcard.agents.dmc_agent import DMCTrainer
 
-def train(args):
 
+def train(args):
     # Make the environment
     env = rlcard.make(args.env)
 
@@ -29,12 +29,13 @@ def train(args):
     # Train DMC Agents
     trainer.start()
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("DMC example in RLCard")
     parser.add_argument(
         '--env',
         type=str,
-        default='leduc-holdem',
+        default='limit-holdem',
         choices=[
             'blackjack',
             'leduc-holdem',
@@ -58,7 +59,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--xpid',
-        default='leduc_holdem',
+        default='limit-holdem',
         help='Experiment id (default: leduc_holdem)',
     )
     parser.add_argument(
@@ -68,7 +69,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--save_interval',
-        default=30,
+        default=1,
         type=int,
         help='Time interval (in minutes) at which to save the model',
     )
@@ -95,4 +96,3 @@ if __name__ == '__main__':
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
     train(args)
-
