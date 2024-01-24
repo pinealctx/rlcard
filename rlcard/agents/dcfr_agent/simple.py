@@ -2,9 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import collections
 import os
-import pickle
 
 
 class MLP(nn.Module):
@@ -44,7 +42,7 @@ class DeepCFRAgent():
 
         self.iteration = 0
 
-    def train(self, num_iterations, update_every):
+    def train(self, num_iterations):
         for _ in range(num_iterations):
             self.iteration += 1
             for player_id in range(self.env.num_players):
@@ -52,7 +50,7 @@ class DeepCFRAgent():
                 probs = np.ones(self.env.num_players)
                 self.traverse_tree(probs, player_id)
 
-            if self.iteration % update_every == 0:
+            if self.iteration % self.env.update_every == 0:
                 self.update_policy()
 
     def traverse_tree(self, probs, player_id):
@@ -62,7 +60,7 @@ class DeepCFRAgent():
         current_player = self.env.get_player_id()
         state_utility = np.zeros(self.env.num_players)
 
-        obs, legal_actions = self.get_state(current_player)
+        obs, legal_actions = self.env.get_state(current_player)
         action_probs = self.action_probs(obs, legal_actions)
 
         for action in legal_actions:
