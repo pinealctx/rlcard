@@ -1,8 +1,8 @@
 from rst_network import RstNetwork
 
 
-# Use pytorch to reimplement AdvantageNetwork as up comment
-class AdvantageNetwork(RstNetwork):
+# Use pytorch to reimplement RegretNetwork as up comment
+class RegretNetwork(RstNetwork):
     """Implements the advantage network as an MLP.
 
     Implements the advantage network as an MLP with skip connections in
@@ -12,11 +12,11 @@ class AdvantageNetwork(RstNetwork):
 
     def __init__(self,
                  input_size,
-                 adv_network_layers,
+                 regret_network_layers,
                  num_actions,
                  activation='leakyrelu',
                  **kwargs):
-        super().__init__(input_size, adv_network_layers, num_actions, activation, **kwargs)
+        super().__init__(input_size, regret_network_layers, num_actions, activation, **kwargs)
 
     def forward(self, inputs):
         """Applies Policy Network.
