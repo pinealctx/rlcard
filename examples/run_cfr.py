@@ -6,6 +6,7 @@ import argparse
 import rlcard
 from rlcard.agents import (
     CFRAgent,
+    DeepCFRAgent,
     RandomAgent,
 )
 from rlcard.utils import (
@@ -14,18 +15,20 @@ from rlcard.utils import (
     Logger,
     plot_curve,
 )
+from cachetools import LRUCache
+
 
 def train(args):
     # Make environments, CFR only supports Leduc Holdem
     env = rlcard.make(
-        'leduc-holdem',
+        args.game,
         config={
             'seed': 0,
             'allow_step_back': True,
         }
     )
     eval_env = rlcard.make(
-        'leduc-holdem',
+        args.game,
         config={
             'seed': 0,
         }
@@ -35,14 +38,26 @@ def train(args):
     set_seed(args.seed)
 
     # Initilize CFR Agent
-    agent = CFRAgent(
-        env,
-        os.path.join(
-            args.log_dir,
-            'cfr_model',
-        ),
-    )
-    agent.load()  # If we have saved model, we first load the model
+    if args.deep:
+        agent = DeepCFRAgent(
+            env,
+            LRUCache(maxsize=10000),
+            10000,
+            os.path.join(
+                args.log_dir,
+                'deep_cfr_model',
+            ),
+        )
+    else:
+        agent = CFRAgent(
+            env,
+            os.path.join(
+                args.log_dir,
+                'cfr_model',
+            ),
+        )
+        agent.load()  # If we have saved model, we first load the model
+
 
     # Evaluate CFR against random
     eval_env.set_agents([
@@ -71,8 +86,19 @@ def train(args):
     # Plot the learning curve
     plot_curve(csv_path, fig_path, 'cfr')
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("CFR example in RLCard")
+    parser.add_argument(
+        '--game',
+        type=str,
+        default='leduc-holdem',
+    )
+    parser.add_argument(
+        '--deep',
+        type=bool,
+        default=True,
+    )
     parser.add_argument(
         '--seed',
         type=int,
@@ -102,4 +128,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     train(args)
-    
+
