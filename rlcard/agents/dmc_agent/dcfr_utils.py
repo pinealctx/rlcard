@@ -1,8 +1,20 @@
 import logging
 import traceback
-
 import numpy as np
 import torch
+
+from copy import deepcopy
+
+
+shandle = logging.StreamHandler()
+shandle.setFormatter(
+    logging.Formatter(
+        '[%(levelname)s:%(process)d %(module)s:%(lineno)d %(asctime)s] '
+        '%(message)s'))
+log = logging.getLogger('deep_cfr')
+log.propagate = False
+log.addHandler(shandle)
+log.setLevel(logging.INFO)
 
 
 def create_buffers_for_cfr(
@@ -45,15 +57,9 @@ def act_for_cfr(
         log.info('Device %s Actor %i started.', str(device), i)
 
         # Configure environment
+        env = deepcopy(env)
         env.seed(i)
-        env.set_agents(model.get_agents())
-
-        done_buf = [[] for _ in range(env.num_players)]
-        episode_return_buf = [[] for _ in range(env.num_players)]
-        target_buf = [[] for _ in range(env.num_players)]
-        state_buf = [[] for _ in range(env.num_players)]
-        action_buf = [[] for _ in range(env.num_players)]
-        size = [0 for _ in range(env.num_players)]
+        # env.set_agents(model.get_actors())
 
         while True:
             trajectories, payoffs = env.run(is_training=True)

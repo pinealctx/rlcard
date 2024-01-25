@@ -6,7 +6,6 @@ import argparse
 import rlcard
 from rlcard.agents import (
     CFRAgent,
-    DeepCFRAgent,
     RandomAgent,
 )
 from rlcard.utils import (
@@ -15,7 +14,7 @@ from rlcard.utils import (
     Logger,
     plot_curve,
 )
-from cachetools import LRUCache
+from rlcard.agents.dmc_agent.dcfr_model import DCFRAgent
 
 
 def train(args):
@@ -39,9 +38,8 @@ def train(args):
 
     # Initilize CFR Agent
     if args.deep:
-        agent = DeepCFRAgent(
+        agent = DCFRAgent(
             env,
-            LRUCache(maxsize=10000),
             10000,
             os.path.join(
                 args.log_dir,

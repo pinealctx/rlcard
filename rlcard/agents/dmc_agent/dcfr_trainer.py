@@ -14,10 +14,10 @@ from .file_writer import FileWriter
 from .dcfr_model import DCFRModel
 from .dcfr_utils import (
     create_buffers_for_cfr,
+    log,
+    act_for_cfr,
 )
 
-from .model import DMCModel
-from .pettingzoo_model import DMCModelPettingZoo
 from .utils import (
     get_batch,
     create_buffers,
@@ -25,15 +25,6 @@ from .utils import (
     act,
 )
 
-shandle = logging.StreamHandler()
-shandle.setFormatter(
-    logging.Formatter(
-        '[%(levelname)s:%(process)d %(module)s:%(lineno)d %(asctime)s] '
-        '%(message)s'))
-log = logging.getLogger('deep_cfr')
-log.propagate = False
-log.addHandler(shandle)
-log.setLevel(logging.INFO)
 
 class DCFRTrainer(object):
     def __init(
@@ -143,21 +134,20 @@ class DCFRTrainer(object):
         if self.load_model and os.path.exists(self.checkpointpath):
             checkpoint_states = torch.load(
                 self.checkpointpath,
-                map_location="cuda:"+str(self.training_device) if self.training_device != "cpu" else "cpu",
+                map_location="cuda:" + str(self.training_device) if self.training_device != "cpu" else "cpu",
             )
-            for actor in range(self.num_actors):
-                agent = learner_model.get_agent(actor)
-                agent.load_state_dict(checkpoint_states['model_state_dict'][actor])
-                agent.optimizer.load_state_dict(checkpoint_states['optimizer_state_dict'][actor])
+            for actor_id in range(self.num_actors):
+                actor = learner_model.get_actor(actor_id)
+                actor.load_state_dict(checkpoint_states['model_state_dict'][actor_id])
+                actor.optimizer.load_state_dict(checkpoint_states['optimizer_state_dict'][actor_id])
             stats = checkpoint_states['stats']
             frames = checkpoint_states['frames']
             log.info(f"Resuming preempted job, current stats:\n{stats}")
 
         # Starting actor processes
         for device in self.device_iterator:
-            for i in range (self.num_actors):
+            for i in range(self.num_actors):
                 args = (i, device, free_queue[device], full_queue[device], models[device], buffers[device], self.env)
-                actor = ctx.Process(target=act, args=args)
+                actor = ctx.Process(target=act_for_cfr, args=args)
                 actor.start()
                 actor_processes.append(actor)
-

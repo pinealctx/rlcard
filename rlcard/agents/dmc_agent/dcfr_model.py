@@ -8,7 +8,7 @@ from rlcard.agents.dcfr_agent import RstNetwork
 from rlcard.utils.utils import remove_illegal
 
 
-class DeepCFRAgent(CFRAgent):
+class DCFRAgent(CFRAgent):
     def __init__(self, env, max_lru_size, model_path='./deep_cfr_model'):
         super().__init__(env, model_path)
 
@@ -16,6 +16,11 @@ class DeepCFRAgent(CFRAgent):
         self.policy = LRUCache(maxsize=max_lru_size)
         self.average_policy = LRUCache(maxsize=max_lru_size)
         self.regrets = LRUCache(maxsize=max_lru_size)
+        self.policy_buff = [None] * max_lru_size
+        self.policy_buff = self.policy_buff[:0]
+
+    def update_policy(self):
+        super().update_policy()
 
 
 class PolicyNet(RstNetwork):
@@ -35,15 +40,18 @@ class PolicyNet(RstNetwork):
         return x
 
 
-class DCFRAgent(object):
+class DCFRActor(object):
     def __init__(
             self,
+            env,
             state_shape,
             action_shape,
             lr=0.0001,
+            max_lru_size=1000000,
             mlp_layers = [512, 512, 512, 512, 512, 512, 512, 512],
             device="0",
     ):
+        self.agent = DCFRAgent(env, max_lru_size)
         self.device = 'cuda:' + device if device != "cpu" else "cpu"
         self.net = PolicyNet(state_shape, action_shape, mlp_layers).to(self.device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
@@ -97,30 +105,30 @@ class DCFRModel(object):
             mlp_layers = [512, 512, 512, 512, 512, 512, 512, 512],
             device="0",
     ):
-        self.agents = []
+        self.actors = []
         for _ in range (multi_num):
-            agent = DCFRAgent(
+            actor = DCFRActor(
                 state_shape,
                 action_shape,
                 lr,
                 mlp_layers,
                 device
             )
-            self.agents.append(agent)
+            self.actors.append(actor)
 
     def share_memory(self):
-        for agent in self.agents:
-            agent.share_memory()
+        for actor in self.actors:
+            actor.share_memory()
 
     def eval(self):
-        for agent in self.agents:
-            agent.eval()
+        for actor in self.actors:
+            actor.eval()
 
     def parameters(self, index):
-        return self.agents[index].parameters()
+        return self.actors[index].parameters()
 
-    def get_agent(self, index):
-        return self.agents[index]
+    def get_actor(self, index):
+        return self.actors[index]
 
     def get_agents(self):
-        return self.agents
+        return self.actors
