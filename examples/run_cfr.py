@@ -40,7 +40,7 @@ def train(args):
     if args.deep:
         agent = DCFRAgent(
             env,
-            10000,
+            1000000,
             os.path.join(
                 args.log_dir,
                 'deep_cfr_model',
@@ -90,12 +90,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--game',
         type=str,
-        default='leduc-holdem',
+        default='limit-holdem',
     )
     parser.add_argument(
         '--deep',
         type=bool,
-        default=True,
+        default=False,
     )
     parser.add_argument(
         '--seed',
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=5000,
+        default=500000,
     )
     parser.add_argument(
         '--num_eval_games',
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--log_dir',
         type=str,
-        default='experiments/leduc_holdem_cfr_result/',
+        default='experiments/limit-holdem_cfr_result/',
     )
 
     args = parser.parse_args()
