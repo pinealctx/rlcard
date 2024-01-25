@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from rst_network import RstNetwork
+from .rst_network import RstNetwork
 
 
 class PolicyNetwork(RstNetwork):

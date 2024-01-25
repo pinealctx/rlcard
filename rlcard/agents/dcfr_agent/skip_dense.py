@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from utils import he_normal
+from .utils import he_normal
 
 
 class SkipDense(nn.Module):

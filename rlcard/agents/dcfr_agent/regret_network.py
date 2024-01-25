@@ -1,4 +1,4 @@
-from rst_network import RstNetwork
+from .rst_network import RstNetwork
 
 
 # Use pytorch to reimplement RegretNetwork as up comment

@@ -1,7 +1,7 @@
 import torch.nn as nn
 
-from skip_dense import SkipDense
-from utils import he_normal
+from .skip_dense import SkipDense
+from .utils import he_normal
 
 
 class RstNetwork(nn.Module):

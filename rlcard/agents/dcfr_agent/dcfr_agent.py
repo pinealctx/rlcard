@@ -5,9 +5,9 @@ import torch.nn as nn
 import numpy as np
 
 from torch.utils.data import DataLoader
-from advantage_network import AdvantageNetwork
-from policy_network import PolicyNetwork
-from data_set import AdvantageDataset, PolicyDataset
+from .advantage_network import AdvantageNetwork
+from .policy_network import PolicyNetwork
+from .data_set import AdvantageDataset, PolicyDataset
 
 
 class DCFRAgent(object):
