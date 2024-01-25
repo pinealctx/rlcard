@@ -51,6 +51,7 @@ def train(args):
     # Train DMC Agents
     trainer.start()
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("DMC example in RLCard")
     parser.add_argument(
