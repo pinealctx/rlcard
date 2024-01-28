@@ -2,6 +2,7 @@
 '''
 import os
 import argparse
+import numpy as np
 
 import rlcard
 from rlcard.agents import (
@@ -19,22 +20,30 @@ from rlcard.agents.dmc_agent.dcfr_model import DCFRAgent
 
 def train(args):
     # Make environments, CFR only supports Leduc Holdem
+    seed = args.seed
+    env_seed = seed
+    eval_seed = seed
+    if seed is None or seed == 0:
+        seed = np.random.randint(1, 1000000)
+        env_seed = np.random.randint(1, 1000000)
+        eval_seed = np.random.randint(1, 1000000)
+
     env = rlcard.make(
         args.game,
         config={
-            'seed': 0,
+            'seed': env_seed,
             'allow_step_back': True,
         }
     )
     eval_env = rlcard.make(
         args.game,
         config={
-            'seed': 0,
+            'seed': eval_seed,
         }
     )
 
     # Seed numpy, torch, random
-    set_seed(args.seed)
+    set_seed(seed)
 
     # Initilize CFR Agent
     if args.deep:
@@ -42,7 +51,7 @@ def train(args):
             env,
             1000000,
             os.path.join(
-                args.log_dir,
+                "d{}_{}".format(args.log_dir, seed),
                 'deep_cfr_model',
             ),
         )
@@ -50,7 +59,7 @@ def train(args):
         agent = CFRAgent(
             env,
             os.path.join(
-                args.log_dir,
+                "{}_{}".format(args.log_dir, seed),
                 'cfr_model',
             ),
         )
@@ -100,12 +109,12 @@ if __name__ == '__main__':
     parser.add_argument(
         '--seed',
         type=int,
-        default=42,
+        default=0,
     )
     parser.add_argument(
         '--num_episodes',
         type=int,
-        default=50000,
+        default=5000,
     )
     parser.add_argument(
         '--num_eval_games',

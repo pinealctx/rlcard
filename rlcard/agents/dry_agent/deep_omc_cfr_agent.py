@@ -1,0 +1,169 @@
+import numpy as np
+import torch
+
+from torch import nn
+from cachetools import LRUCache
+from .omc_cfr_agent import OSMCCFRAgent
+
+
+class SkipDense(nn.Module):
+    """Dense Layer with skip connection in PyTorch."""
+
+    def __init__(self, units, activation="leakyrelu"):
+        super(SkipDense, self).__init__()
+        self.hidden = nn.Linear(units, units)
+        # Using He initialization (also known as Kaiming initialization)
+        he_normal(self.hidden.weight, activation)
+
+    def forward(self, x):
+        return self.hidden(x) + x
+
+
+class RstNet(nn.Module):
+    """Implements the Rst network as an MLP.
+    """
+
+    def __init__(self,
+                 input_size,
+                 layers,
+                 output_size,
+                 activation='leakyrelu',
+                 lr=0.0001,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.input_size = input_size
+        self.output_size = output_size
+        if activation == 'leakyrelu':
+            self.activation = nn.LeakyReLU(negative_slope=0.2)
+        elif activation == 'relu':
+            self.activation = nn.ReLU()
+        else:
+            raise ValueError('Unsupported activation function: {}'.format(activation))
+
+        self.mlp = nn.Sequential()
+        self.input_layer = nn.Linear(input_size, layers[0])
+        he_normal(self.input_layer.weight, activation)
+        self.mlp.add_module('input', nn.Sequential(self.input_layer, self.activation))
+
+        self.hidden = []
+        prev_units = layers[0]
+        for units in layers[:-1]:
+            if prev_units == units:
+                self.hidden.append(SkipDense(units, activation))
+            else:
+                self.hidden.append(nn.Linear(prev_units, units))
+                he_normal(self.hidden[-1].weight, activation)
+            prev_units = units
+
+        for i, layer in enumerate(self.hidden):
+            fc = nn.Sequential(layer, self.activation)
+            self.mlp.add_module('h{}'.format(i), fc)
+
+        self.normalization = nn.LayerNorm(prev_units)
+        self.mlp.add_module('norm', self.normalization)
+
+        self.last_layer = nn.Linear(prev_units, layers[-1])
+        he_normal(self.last_layer.weight, activation)
+        self.mlp.add_module('last', nn.Sequential(self.last_layer, self.activation))
+
+        self.out_layer = nn.Linear(layers[-1], output_size)
+        self.mlp.add_module('out', self.out_layer)
+
+        self.loss_function = nn.MSELoss()
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+
+    def train_model(self, state, target):
+        self.optimizer.zero_grad()
+        prediction = self.forward(state)
+        loss = self.loss_function(prediction, target)
+        loss.backward()
+        self.optimizer.step()
+
+
+class PolicyNet(RstNet):
+    def __init__(
+            self,
+            state_shape,
+            action_shape,
+            mlp_layers=[512, 512, 512, 512, 512, 512, 512, 512],
+    ):
+        super().__init__(state_shape, mlp_layers, action_shape)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, inputs):
+        state = inputs
+        x = self.mlp(state)
+        x = self.softmax(x)
+        return x
+
+
+class RegretNet(RstNet):
+    def __init__(
+            self,
+            state_shape,
+            action_shape,
+            mlp_layers=[512, 512, 512, 512, 512, 512, 512, 512],
+    ):
+        super().__init__(state_shape, mlp_layers, action_shape)
+
+    def forward(self, inputs):
+        state = inputs
+        x = self.mlp(state)
+        return x
+
+
+class DeepOSMCCFRAgent(OSMCCFRAgent):
+    def __init__(self,
+                 env,
+                 max_lru_size,
+                 device_num=0,
+                 model_path='./deep_omc_cfr_model'):
+        # 固定大小的字典
+        self.policy = LRUCache(maxsize=max_lru_size)
+        self.average_policy = LRUCache(maxsize=max_lru_size)
+        self.regrets = LRUCache(maxsize=max_lru_size)
+        super().__init__(env, model_path)
+        self.device = torch.device(f'cuda:{device_num}' if torch.cuda.is_available() else 'cpu')
+        self.policy_net = PolicyNet(self.env.state_shape[0], self.env.num_actions).to(self.device)
+        self.average_policy_net = PolicyNet(self.env.state_shape[0], self.env.num_actions).to(self.device)
+        self.regret_net = RegretNet(self.env.state_shape[0], self.env.num_actions).to(self.device)
+
+    def traverse_tree(self, probs, player_id):
+        state_utility = super().traverse_tree(probs, player_id)
+        # Train the models with the updated average_policy and regrets
+        for obs, target in self.regrets:
+            self.regret_net.train_model(obs, target)
+        for obs, target in self.average_policy:
+            self.average_policy_net.train_model(obs, target)
+
+        return state_utility
+
+    def update_policy(self):
+        ''' Update policy based on the current regrets
+        '''
+        super().update_policy();
+        for obs, target in self.policy:
+            self.policy_net.train_model(obs, target)
+
+    def save_model(self, path):
+        """Save the model to the specified path."""
+        torch.save({
+            'policy_net_dict': self.policy_net.state_dict(),
+            'average_net_state_dict': self.average_policy_net.state_dict(),
+            'regret_net_dict': self.regret_net.state_dict(),
+        }, path)
+
+    def load_model(self, path):
+        """Load the model from the specified path."""
+        checkpoint = torch.load(path)
+        self.policy_net.load_state_dict(checkpoint['policy_net_dict'])
+        self.average_policy_net.load_state_dict(checkpoint['average_net_state_dict'])
+        self.regret_net.load_state_dict(checkpoint['regret_net_dict'])
+
+
+def he_normal(tensor, activation):
+    if activation == "leaky_relu":
+        nn.init.kaiming_normal_(tensor, a=0.2, nonlinearity='leakyrelu')
+    else:
+        nn.init.kaiming_normal_(tensor, nonlinearity='relu')
+
