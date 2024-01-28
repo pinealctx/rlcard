@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 from torch import nn
@@ -117,48 +116,46 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
                  env,
                  max_lru_size,
                  device_num=0,
+                 batch_size=64,
+                 epochs=1,
                  model_path='./deep_omc_cfr_model'):
+        super().__init__(env, model_path)
+
         # 固定大小的字典
         self.policy = LRUCache(maxsize=max_lru_size)
         self.average_policy = LRUCache(maxsize=max_lru_size)
         self.regrets = LRUCache(maxsize=max_lru_size)
-        super().__init__(env, model_path)
         self.device = torch.device(f'cuda:{device_num}' if torch.cuda.is_available() else 'cpu')
-        self.policy_net = PolicyNet(self.env.state_shape[0], self.env.num_actions).to(self.device)
+        self.batch_size = batch_size
+        self.epochs = epochs
         self.average_policy_net = PolicyNet(self.env.state_shape[0], self.env.num_actions).to(self.device)
-        self.regret_net = RegretNet(self.env.state_shape[0], self.env.num_actions).to(self.device)
 
-    def traverse_tree(self, probs, player_id):
-        state_utility = super().traverse_tree(probs, player_id)
-        # Train the models with the updated average_policy and regrets
-        for obs, target in self.regrets:
-            self.regret_net.train_model(obs, target)
-        for obs, target in self.average_policy:
-            self.average_policy_net.train_model(obs, target)
+    def train(self):
+        super().train()
+        self.train_model()
 
-        return state_utility
-
-    def update_policy(self):
-        ''' Update policy based on the current regrets
-        '''
-        super().update_policy();
-        for obs, target in self.policy:
-            self.policy_net.train_model(obs, target)
+    def train_model(self):
+        if len(self.average_policy) < self.batch_size:
+            return
+        for epoch in range(self.epochs):
+            states, targets = zip(*list(self.average_policy.items()))
+            states = torch.tensor(states, dtype=torch.float32, device=self.device)
+            targets = torch.tensor(targets, dtype=torch.float32, device=self.device)
+            for i in range(0, len(states), self.batch_size):
+                inputs = states[i:i + self.batch_size]
+                labels = targets[i:i + self.batch_size]
+                self.average_policy_net.train_model(inputs, labels)
 
     def save_model(self, path):
         """Save the model to the specified path."""
         torch.save({
-            'policy_net_dict': self.policy_net.state_dict(),
             'average_net_state_dict': self.average_policy_net.state_dict(),
-            'regret_net_dict': self.regret_net.state_dict(),
         }, path)
 
     def load_model(self, path):
         """Load the model from the specified path."""
         checkpoint = torch.load(path)
-        self.policy_net.load_state_dict(checkpoint['policy_net_dict'])
         self.average_policy_net.load_state_dict(checkpoint['average_net_state_dict'])
-        self.regret_net.load_state_dict(checkpoint['regret_net_dict'])
 
 
 def he_normal(tensor, activation):
