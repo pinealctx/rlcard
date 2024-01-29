@@ -4,6 +4,7 @@ import numpy as np
 
 from torch import nn
 from torch.multiprocessing import Lock
+from rlcard.utils.utils import remove_illegal
 from .omc_cfr_agent import OSMCCFRAgent
 
 
@@ -157,6 +158,24 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
             return
         file_name = "deep_omc_cfr_model_{}.pth".format(self.process_id)
         self.load_model(os.path.join(self.model_path, file_name))
+
+    def eval_step(self, state):
+        """use self policy network to predict action"""
+        obs = state['obs']
+        legal_actions = list(state['legal_actions'].keys())
+        action_probs = self.eval_action_probs(obs, legal_actions)
+        action = np.random.choice(len(action_probs), p=action_probs)
+        info = {'probs': {state['raw_legal_actions'][i]: float(action_probs[i])
+                          for i in range(len(state['legal_actions']))}}
+
+        return action, info
+
+    def eval_action_probs(self, obs, legal_actions):
+        """ Get action probabilities from the policy network """
+        obs_tensor = torch.tensor(obs, dtype=torch.float32, device=self.device)
+        action_probs = self.average_policy_net(obs_tensor).detach().cpu().numpy()
+        action_probs = remove_illegal(action_probs, legal_actions)
+        return action_probs
 
     def save_model(self, path):
         """Save the model to the specified path."""
