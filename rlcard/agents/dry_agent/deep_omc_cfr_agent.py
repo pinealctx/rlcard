@@ -1,8 +1,9 @@
 import os
 import torch
+import numpy as np
 
 from torch import nn
-from cachetools import LRUCache
+from torch.multiprocessing import Lock
 from .omc_cfr_agent import OSMCCFRAgent
 
 
@@ -91,6 +92,7 @@ class PolicyNet(RstNet):
     ):
         super().__init__(state_shape, mlp_layers, action_shape, activation, lr)
         self.softmax = nn.Softmax(dim=-1)
+        self.lock = Lock()
 
     def forward(self, inputs):
         state = inputs
@@ -110,17 +112,13 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
                  activation='leakyrelu',
                  lr=0.0001,
                  model_path='./deep_omc_cfr_model'):
-        super().__init__(env, model_path)
+        super().__init__(env, max_lru_size, model_path)
 
-        # 固定大小的字典
-        self.policy = LRUCache(maxsize=max_lru_size)
-        self.average_policy = LRUCache(maxsize=max_lru_size)
-        self.regrets = LRUCache(maxsize=max_lru_size)
         self.device = torch.device(f'cuda:{device_num}' if torch.cuda.is_available() else 'cpu')
         self.batch_size = batch_size
         self.epochs = epochs
         self.process_id = process_id
-        self.average_policy_net = PolicyNet(self.env.state_shape[0][0]*8, self.env.num_actions,
+        self.average_policy_net = PolicyNet(self.env.state_shape[0][0], self.env.num_actions,
                                             activation=activation,
                                             lr=lr).to(self.device)
         self.average_policy_net.share_memory()
@@ -134,12 +132,19 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
             return
         for epoch in range(self.epochs):
             states, targets = zip(*list(self.average_policy.items()))
+            states = [np.frombuffer(state, dtype=np.float64) for state in states]
+            states = np.array(states)
             states = torch.tensor(states, dtype=torch.float32, device=self.device)
+            targets = np.array(targets)
             targets = torch.tensor(targets, dtype=torch.float32, device=self.device)
-            for i in range(0, len(states), self.batch_size):
-                inputs = states[i:i + self.batch_size]
-                labels = targets[i:i + self.batch_size]
-                self.average_policy_net.train_model(inputs, labels)
+            self.average_policy_net.lock.acquire()
+            try:
+                for i in range(0, len(states), self.batch_size):
+                    inputs = states[i:i + self.batch_size]
+                    labels = targets[i:i + self.batch_size]
+                    self.average_policy_net.train_model(inputs, labels)
+            finally:
+                self.average_policy_net.lock.release()
 
     def save(self):
         if not os.path.exists(self.model_path):
