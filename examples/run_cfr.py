@@ -2,7 +2,6 @@
 '''
 import os
 import argparse
-import numpy as np
 
 import rlcard
 from rlcard.agents import (
@@ -15,30 +14,24 @@ from rlcard.utils import (
     Logger,
     plot_curve,
 )
-from rlcard.agents.dmc_agent.dcfr_model import DCFRAgent
+from rlcard.agents.dry_agent.deep_omc_cfr_agent import DeepOSMCCFRAgent
 
 
 def train(args):
     # Make environments, CFR only supports Leduc Holdem
     seed = args.seed
-    env_seed = seed
-    eval_seed = seed
-    if seed is None or seed == 0:
-        seed = np.random.randint(1, 1000000)
-        env_seed = np.random.randint(1, 1000000)
-        eval_seed = np.random.randint(1, 1000000)
 
     env = rlcard.make(
         args.game,
         config={
-            'seed': env_seed,
+            'seed': seed,
             'allow_step_back': True,
         }
     )
     eval_env = rlcard.make(
         args.game,
         config={
-            'seed': eval_seed,
+            'seed': seed,
         }
     )
 
@@ -46,14 +39,13 @@ def train(args):
     set_seed(seed)
 
     # Initilize CFR Agent
-    if args.deep:
-        agent = DCFRAgent(
+    if args.agent_type == 1:
+        agent = DeepOSMCCFRAgent(
             env,
-            1000000,
-            os.path.join(
-                "d{}_{}".format(args.log_dir, seed),
-                'deep_cfr_model',
-            ),
+            100000,
+            epochs=args.num_trains,
+            process_id=seed,
+            lr=args.lr,
         )
     else:
         agent = CFRAgent(
@@ -102,9 +94,10 @@ if __name__ == '__main__':
         default='limit-holdem',
     )
     parser.add_argument(
-        '--deep',
-        type=bool,
-        default=False,
+        '--agent_type',
+        type=int,
+        help='0 for cfr, 1 for dmcrcf',
+        default=1,
     )
     parser.add_argument(
         '--seed',
@@ -130,6 +123,16 @@ if __name__ == '__main__':
         '--log_dir',
         type=str,
         default='experiments/limit-holdem_cfr_result/',
+    )
+    parser.add_argument(
+        '--num_trains',
+        type=int,
+        default=5,
+    )
+    parser.add_argument(
+        '--lr',
+        type=float,
+        default=0.0003,
     )
 
     args = parser.parse_args()

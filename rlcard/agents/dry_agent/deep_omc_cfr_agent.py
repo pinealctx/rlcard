@@ -1,3 +1,4 @@
+import os
 import torch
 
 from torch import nn
@@ -85,29 +86,16 @@ class PolicyNet(RstNet):
             state_shape,
             action_shape,
             mlp_layers=[512, 512, 512, 512, 512, 512, 512, 512],
+            activation='leakyrelu',
+            lr=0.0001,
     ):
-        super().__init__(state_shape, mlp_layers, action_shape)
+        super().__init__(state_shape, mlp_layers, action_shape, activation, lr)
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, inputs):
         state = inputs
         x = self.mlp(state)
         x = self.softmax(x)
-        return x
-
-
-class RegretNet(RstNet):
-    def __init__(
-            self,
-            state_shape,
-            action_shape,
-            mlp_layers=[512, 512, 512, 512, 512, 512, 512, 512],
-    ):
-        super().__init__(state_shape, mlp_layers, action_shape)
-
-    def forward(self, inputs):
-        state = inputs
-        x = self.mlp(state)
         return x
 
 
@@ -118,6 +106,9 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
                  device_num=0,
                  batch_size=64,
                  epochs=1,
+                 process_id=0,
+                 activation='leakyrelu',
+                 lr=0.0001,
                  model_path='./deep_omc_cfr_model'):
         super().__init__(env, model_path)
 
@@ -128,7 +119,11 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         self.device = torch.device(f'cuda:{device_num}' if torch.cuda.is_available() else 'cpu')
         self.batch_size = batch_size
         self.epochs = epochs
-        self.average_policy_net = PolicyNet(self.env.state_shape[0], self.env.num_actions).to(self.device)
+        self.process_id = process_id
+        self.average_policy_net = PolicyNet(self.env.state_shape[0][0]*8, self.env.num_actions,
+                                            activation=activation,
+                                            lr=lr).to(self.device)
+        self.average_policy_net.share_memory()
 
     def train(self):
         super().train()
@@ -145,6 +140,18 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
                 inputs = states[i:i + self.batch_size]
                 labels = targets[i:i + self.batch_size]
                 self.average_policy_net.train_model(inputs, labels)
+
+    def save(self):
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
+        file_name = "deep_omc_cfr_model_{}_{}.pth".format(self.process_id, self.iteration)
+        self.save_model(os.path.join(self.model_path, file_name))
+
+    def load(self):
+        if not os.path.exists(self.model_path):
+            return
+        file_name = "deep_omc_cfr_model_{}.pth".format(self.process_id)
+        self.load_model(os.path.join(self.model_path, file_name))
 
     def save_model(self, path):
         """Save the model to the specified path."""
