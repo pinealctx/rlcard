@@ -14,6 +14,7 @@ class OSMCCFRAgent(CFRAgent):
         # 固定大小的字典
         self.policy = LRUCache(maxsize=max_lru_size)
         self.average_policy = LRUCache(maxsize=max_lru_size)
+        self.average_policy_pool = LRUCache(maxsize=max_lru_size//10)
         self.regrets = LRUCache(maxsize=max_lru_size)
 
     def traverse_tree(self, probs, player_id):
@@ -56,6 +57,7 @@ class OSMCCFRAgent(CFRAgent):
                                             - player_state_utility)
             self.regrets[obs][action] += regret
             self.average_policy[obs][action] += self.iteration * player_prob * action_probs[action]
+            self.average_policy_pool[obs] = self.average_policy[obs]
 
         else:
             # Choose the action that leads to the current information set

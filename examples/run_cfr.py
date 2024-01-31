@@ -68,7 +68,8 @@ def train(args):
     with Logger(args.log_dir) as logger:
         for episode in range(args.num_episodes):
             agent.train()
-            print('\rIteration {}'.format(episode), end='')
+            if episode % 100 == 0:
+                print('\rIteration {}'.format(episode), end='')
             # Evaluate the performance. Play with Random agents.
             if episode % args.evaluate_every == 0:
                 agent.save() # Save model

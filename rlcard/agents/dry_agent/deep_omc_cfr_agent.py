@@ -80,6 +80,7 @@ class RstNet(nn.Module):
         loss = self.loss_function(prediction, target)
         loss.backward()
         self.optimizer.step()
+        return loss.item()
 
 
 class PolicyNet(RstNet):
@@ -123,16 +124,17 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
                                             activation=activation,
                                             lr=lr).to(self.device)
         self.average_policy_net.share_memory()
+        # self.forward_count = 0
 
     def train(self):
         super().train()
         self.train_model()
 
     def train_model(self):
-        if len(self.average_policy) < self.batch_size:
+        if len(self.average_policy_pool) < self.batch_size:
             return
         for epoch in range(self.epochs):
-            states, targets = zip(*list(self.average_policy.items()))
+            states, targets = zip(*list(self.average_policy_pool.items()))
             states = [np.frombuffer(state, dtype=np.float64) for state in states]
             states = np.array(states)
             states = torch.tensor(states, dtype=torch.float32, device=self.device)
@@ -144,6 +146,11 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
                     inputs = states[i:i + self.batch_size]
                     labels = targets[i:i + self.batch_size]
                     self.average_policy_net.train_model(inputs, labels)
+                    """loss = self.average_policy_net.train_model(inputs, labels)
+                    self.forward_count += 1
+                    if self.forward_count % 1000 == 0:
+                        print("forward_count: {} loss:{}".format(self.forward_count, loss))
+                    """
             finally:
                 self.average_policy_net.lock.release()
 
