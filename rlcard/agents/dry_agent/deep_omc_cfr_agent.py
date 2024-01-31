@@ -2,150 +2,134 @@ import os
 import torch
 import numpy as np
 
-from torch import nn
-from torch.multiprocessing import Lock
+from datetime import datetime
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from rlcard.utils.utils import remove_illegal
+from rlcard.agents.model import SoftMaxRstNet, EarlyStopping
 from .omc_cfr_agent import OSMCCFRAgent
 
 
-class SkipDense(nn.Module):
-    """Dense Layer with skip connection in PyTorch."""
-
-    def __init__(self, units, activation="leakyrelu"):
-        super(SkipDense, self).__init__()
-        self.hidden = nn.Linear(units, units)
-        # Using He initialization (also known as Kaiming initialization)
-        he_normal(self.hidden.weight, activation)
-
-    def forward(self, x):
-        return self.hidden(x) + x
-
-
-class RstNet(nn.Module):
-    """Implements the Rst network as an MLP.
-    """
-
-    def __init__(self,
-                 input_size,
-                 layers,
-                 output_size,
-                 activation='leakyrelu',
-                 lr=0.0001,
-                 **kwargs):
-        super().__init__(**kwargs)
-        self.input_size = input_size
-        self.output_size = output_size
-        if activation == 'leakyrelu':
-            self.activation = nn.LeakyReLU(negative_slope=0.2)
-        elif activation == 'relu':
-            self.activation = nn.ReLU()
-        else:
-            raise ValueError('Unsupported activation function: {}'.format(activation))
-
-        self.mlp = nn.Sequential()
-        self.input_layer = nn.Linear(input_size, layers[0])
-        he_normal(self.input_layer.weight, activation)
-        self.mlp.add_module('input', nn.Sequential(self.input_layer, self.activation))
-
-        self.hidden = []
-        prev_units = layers[0]
-        for units in layers[:-1]:
-            if prev_units == units:
-                self.hidden.append(SkipDense(units, activation))
-            else:
-                self.hidden.append(nn.Linear(prev_units, units))
-                he_normal(self.hidden[-1].weight, activation)
-            prev_units = units
-
-        for i, layer in enumerate(self.hidden):
-            fc = nn.Sequential(layer, self.activation)
-            self.mlp.add_module('h{}'.format(i), fc)
-
-        self.normalization = nn.LayerNorm(prev_units)
-        self.mlp.add_module('norm', self.normalization)
-
-        self.last_layer = nn.Linear(prev_units, layers[-1])
-        he_normal(self.last_layer.weight, activation)
-        self.mlp.add_module('last', nn.Sequential(self.last_layer, self.activation))
-
-        self.out_layer = nn.Linear(layers[-1], output_size)
-        self.mlp.add_module('out', self.out_layer)
-
-        self.loss_function = nn.MSELoss()
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-
-    def train_model(self, state, target):
-        self.optimizer.zero_grad()
-        prediction = self.forward(state)
-        loss = self.loss_function(prediction, target)
-        loss.backward()
-        self.optimizer.step()
-
-
-class PolicyNet(RstNet):
+class PolicyNet(SoftMaxRstNet):
     def __init__(
             self,
             state_shape,
             action_shape,
             mlp_layers=[512, 512, 512, 512, 512, 512, 512, 512],
             activation='leakyrelu',
-            lr=0.0001,
+            lr=0.00003,
+            l2_lambda=0.00001,
     ):
-        super().__init__(state_shape, mlp_layers, action_shape, activation, lr)
-        self.softmax = nn.Softmax(dim=-1)
-        self.lock = Lock()
-
-    def forward(self, inputs):
-        state = inputs
-        x = self.mlp(state)
-        x = self.softmax(x)
-        return x
-
+        super().__init__(state_shape, action_shape, mlp_layers, activation, lr)
+        if l2_lambda > 0:
+            self.optimizer = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=l2_lambda)
+        else:
+            self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
 class DeepOSMCCFRAgent(OSMCCFRAgent):
     def __init__(self,
                  env,
                  max_lru_size,
                  device_num=0,
-                 batch_size=64,
-                 epochs=1,
+                 batch_size=128,
                  process_id=0,
                  activation='leakyrelu',
-                 lr=0.0001,
+                 lr=0.00003,
+                 early_stop_patience=20,
+                 l2_lambda=0.00001,
+                 min_training_times=2000,
                  model_path='./deep_omc_cfr_model'):
         super().__init__(env, max_lru_size, model_path)
 
         self.device = torch.device(f'cuda:{device_num}' if torch.cuda.is_available() else 'cpu')
         self.batch_size = batch_size
-        self.epochs = epochs
         self.process_id = process_id
         self.average_policy_net = PolicyNet(self.env.state_shape[0][0], self.env.num_actions,
                                             activation=activation,
-                                            lr=lr).to(self.device)
+                                            lr=lr,
+                                            l2_lambda=0).to(self.device)
         self.average_policy_net.share_memory()
+        self.early_stop_patience = early_stop_patience
+        self.min_training_times = min_training_times
 
     def train(self):
-        super().train()
+        average_policy_counter = self.average_policy_update_count
+        print("Start training model, current average policy update count: {}".format(average_policy_counter))
+        """loop train if average policy has been countered more than max_lru_size"""
+        """then train model"""
+        prev_policy_counter = average_policy_counter
+        while self.average_policy_update_count - average_policy_counter < self.max_lru_size/10:
+            super().train()
+            if self.iteration % 200 == 0:
+                now = datetime.now()
+                print("Time: {}, Iteration: {}, average policy update count: {}, delta :{}".
+                      format(now.strftime("%Y-%m-%d %H:%M:%S"),
+                             self.iteration,
+                             self.average_policy_update_count,
+                             self.average_policy_update_count - prev_policy_counter))
+                prev_policy_counter = self.average_policy_update_count
+        print("Start training model, previous average policy update count: {}, current average policy update count: {}".
+              format(average_policy_counter, self.average_policy_update_count))
+        """train model"""
         self.train_model()
+        self.average_policy_pool.clear()
+        self.save()
 
     def train_model(self):
-        if len(self.average_policy) < self.batch_size:
+        average_policy_pool_count = len(self.average_policy_pool)
+        if average_policy_pool_count < self.batch_size:
             return
-        for epoch in range(self.epochs):
-            states, targets = zip(*list(self.average_policy.items()))
-            states = [np.frombuffer(state, dtype=np.float64) for state in states]
-            states = np.array(states)
-            states = torch.tensor(states, dtype=torch.float32, device=self.device)
-            targets = np.array(targets)
-            targets = torch.tensor(targets, dtype=torch.float32, device=self.device)
-            self.average_policy_net.lock.acquire()
-            try:
-                for i in range(0, len(states), self.batch_size):
-                    inputs = states[i:i + self.batch_size]
-                    labels = targets[i:i + self.batch_size]
-                    self.average_policy_net.train_model(inputs, labels)
-            finally:
-                self.average_policy_net.lock.release()
+
+        # Unpack the data from average_policy_pool
+        states, targets = zip(*list(self.average_policy_pool.items()))
+        states = [np.frombuffer(state, dtype=np.float64) for state in states]
+        states = np.array(states)
+        states = torch.tensor(states, dtype=torch.float32, device=self.device)
+        targets = np.array(targets)
+        targets = torch.tensor(targets, dtype=torch.float32, device=self.device)
+
+        # Initialize the learning rate scheduler
+        # scheduler = ReduceLROnPlateau(self.average_policy_net.optimizer, 'min')
+
+        # Initialize the EarlyStopping object
+        early_stopping = EarlyStopping(self.early_stop_patience)
+        count = len(states)
+        print("Start training model, total data size: {}, average policy pool count: {}".
+              format(count, average_policy_pool_count))
+        episode = 0
+
+        min_iterations = (count / self.batch_size) * self.min_training_times
+
+        while True:
+            # Randomly select a batch of data for training
+            indices = np.random.choice(count, self.batch_size, replace=False)
+            inputs = states[indices]
+            labels = targets[indices]
+
+            # Train the model and get the current loss
+            curr_loss = self.train_batch(inputs, labels)
+
+            # Update the learning rate
+            # scheduler.step(curr_loss)
+            episode += 1
+            if episode % 500 == 0:
+                print("Training model, episode: {}, loss: {}".format(episode, curr_loss))
+
+            if episode > min_iterations:
+                # Early stopping check
+                #early_stopping.step(curr_loss)
+                #if early_stopping.early_stop:
+                #    break
+                break
+        print("Finish training model, total episode: {}".format(episode))
+
+    def train_batch(self, inputs, labels):
+        self.average_policy_net.lock.acquire()
+        try:
+            self.average_policy_net.train_model(inputs, labels)
+            curr_loss = self.average_policy_net.loss_function(self.average_policy_net(inputs), labels).item()
+        finally:
+            self.average_policy_net.lock.release()
+        return curr_loss
 
     def save(self):
         if not os.path.exists(self.model_path):
@@ -187,11 +171,3 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         """Load the model from the specified path."""
         checkpoint = torch.load(path)
         self.average_policy_net.load_state_dict(checkpoint['average_net_state_dict'])
-
-
-def he_normal(tensor, activation):
-    if activation == "leaky_relu":
-        nn.init.kaiming_normal_(tensor, a=0.2, nonlinearity='leakyrelu')
-    else:
-        nn.init.kaiming_normal_(tensor, nonlinearity='relu')
-

@@ -1,20 +1,23 @@
 import numpy as np
 
-from cachetools import LRUCache
+from cachetools import LRUCache, FIFOCache
 from rlcard.agents import CFRAgent
 
 
 class OSMCCFRAgent(CFRAgent):
 
     def __init__(self,
-               env,
-               max_lru_size,
-               model_path='./omc_cfr_model'):
+                 env,
+                 max_lru_size,
+                 model_path='./omc_cfr_model'):
         super().__init__(env, model_path)
         # 固定大小的字典
-        self.policy = LRUCache(maxsize=max_lru_size)
+        self.policy = LRUCache(maxsize=max_lru_size * 2)
         self.average_policy = LRUCache(maxsize=max_lru_size)
         self.regrets = LRUCache(maxsize=max_lru_size)
+        self.average_policy_pool = FIFOCache(maxsize=max_lru_size + max_lru_size / 2)
+        self.max_lru_size = max_lru_size
+        self.average_policy_update_count = 0
 
     def traverse_tree(self, probs, player_id):
         if self.env.is_over():
@@ -44,7 +47,7 @@ class OSMCCFRAgent(CFRAgent):
             # Update regrets and strategy along the path of the sampled outcome
             player_prob = probs[current_player]
             counterfactual_prob = (np.prod(probs[:current_player]) *
-                                    np.prod(probs[current_player + 1:]))
+                                   np.prod(probs[current_player + 1:]))
             player_state_utility = state_utility[current_player]
 
             if obs not in self.regrets:
@@ -56,7 +59,8 @@ class OSMCCFRAgent(CFRAgent):
                                             - player_state_utility)
             self.regrets[obs][action] += regret
             self.average_policy[obs][action] += self.iteration * player_prob * action_probs[action]
-
+            self.average_policy_pool[obs] = self.average_policy[obs]
+            self.average_policy_update_count += 1
         else:
             # Choose the action that leads to the current information set
             action = np.argmax(action_probs)
@@ -67,7 +71,5 @@ class OSMCCFRAgent(CFRAgent):
             self.env.step(action)
             utility = self.traverse_tree(new_probs, player_id)
             self.env.step_back()
-
             state_utility += action_probs[action] * utility
-
         return state_utility

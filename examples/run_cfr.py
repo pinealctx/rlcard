@@ -15,6 +15,7 @@ from rlcard.utils import (
     plot_curve,
 )
 from rlcard.agents.dry_agent.deep_omc_cfr_agent import DeepOSMCCFRAgent
+from rlcard.agents.dry_agent.debug_omc_cfr_agent import DebugOSMCCFRAgent
 
 
 def train(args):
@@ -43,9 +44,16 @@ def train(args):
         agent = DeepOSMCCFRAgent(
             env,
             100000,
-            epochs=args.num_trains,
             process_id=seed,
             lr=args.lr,
+            early_stop_patience=args.estop,
+            l2_lambda=args.l2,
+            min_training_times=args.min_training_times,
+        )
+    elif args.agent_type == 2:
+        agent = DebugOSMCCFRAgent(
+            env,
+            100000,
         )
     else:
         agent = CFRAgent(
@@ -57,26 +65,32 @@ def train(args):
         )
         agent.load()  # If we have saved model, we first load the model
 
-
     # Evaluate CFR against random
     eval_env.set_agents([
         agent,
         RandomAgent(num_actions=env.num_actions),
     ])
+    if args.agent_type == 1:
+        deep_train(agent, args, eval_env)
+    else:
+        regular_train(agent, args, eval_env)
 
+
+def regular_train(agent, params, eval_env):
     # Start training
-    with Logger(args.log_dir) as logger:
-        for episode in range(args.num_episodes):
+    with Logger(params.log_dir) as logger:
+        for episode in range(params.num_episodes):
             agent.train()
             print('\rIteration {}'.format(episode), end='')
             # Evaluate the performance. Play with Random agents.
-            if episode % args.evaluate_every == 0:
-                agent.save() # Save model
+            if episode % params.evaluate_every == 0:
+                # Save model
+                agent.save()
                 logger.log_performance(
                     episode,
                     tournament(
                         eval_env,
-                        args.num_eval_games
+                        params.num_eval_games
                     )[0]
                 )
 
@@ -84,6 +98,21 @@ def train(args):
         csv_path, fig_path = logger.csv_path, logger.fig_path
     # Plot the learning curve
     plot_curve(csv_path, fig_path, 'cfr')
+
+
+def deep_train(agent, params, eval_env):
+    # Start training
+    with Logger(params.log_dir) as logger:
+        for episode in range(params.num_episodes):
+            print('Deep Iteration {}'.format(episode))
+            agent.train()
+            logger.log_performance(
+                episode,
+                tournament(
+                    eval_env,
+                    params.num_eval_games
+                )[0]
+            )
 
 
 if __name__ == '__main__':
@@ -96,7 +125,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--agent_type',
         type=int,
-        help='0 for cfr, 1 for dmcrcf',
+        help='0 for cfr, 1 for dmcrcf, 2 for debug rcf',
         default=1,
     )
     parser.add_argument(
@@ -125,17 +154,25 @@ if __name__ == '__main__':
         default='experiments/limit-holdem_cfr_result/',
     )
     parser.add_argument(
-        '--num_trains',
-        type=int,
-        default=5,
-    )
-    parser.add_argument(
         '--lr',
         type=float,
-        default=0.0003,
+        default=0.00003,
+    )
+    parser.add_argument(
+        '--estop',
+        type=int,
+        default=20,
+    )
+    parser.add_argument(
+        '--l2',
+        type=float,
+        default=0.00001,
+    )
+    parser.add_argument(
+        "--min_training_times",
+        type=int,
+        default=2000,
     )
 
     args = parser.parse_args()
-
     train(args)
-
