@@ -3,10 +3,14 @@ import torch
 import numpy as np
 
 from datetime import datetime
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from rlcard.utils.utils import remove_illegal
-from rlcard.agents.model import SoftMaxRstNet, EarlyStopping
+
+"""from torch.optim.lr_scheduler import ReduceLROnPlateau
+from rlcard.utils.utils import remove_illegal"""
+from rlcard.agents.model import SoftMaxRstNet
 from .omc_cfr_agent import OSMCCFRAgent
+from .eval_agent import EvalAgent
+
+"""#, EarlyStopping"""
 
 
 class PolicyNet(SoftMaxRstNet):
@@ -51,6 +55,7 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         self.average_policy_net.share_memory()
         self.early_stop_patience = early_stop_patience
         self.min_training_times = min_training_times
+        self.eval_agent = EvalAgent(self.average_policy_net, self.device)
 
     def train(self):
         average_policy_counter = self.average_policy_update_count
@@ -58,7 +63,7 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         """loop train if average policy has been countered more than max_lru_size"""
         """then train model"""
         prev_policy_counter = average_policy_counter
-        while self.average_policy_update_count - average_policy_counter < self.max_lru_size/10:
+        while self.average_policy_update_count - average_policy_counter < self.max_lru_size / 10:
             super().train()
             if self.iteration % 1000 == 0:
                 now = datetime.now()
@@ -111,7 +116,7 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
                 # Train the model and get the current loss
                 curr_loss += self.train_batch(inputs, labels)
                 batch_count += 1
-            print("Training model, episode: {}, loss: {}".format(i, curr_loss/batch_count))
+            print("Training model, episode: {}, loss: {}".format(i, curr_loss / batch_count))
             # Update the learning rate
             # scheduler.step(curr_loss)
             """if i % 2000 == 0:
@@ -141,22 +146,7 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         print("Load model from {}".format(file_full_path))
 
     def eval_step(self, state):
-        """use self policy network to predict action"""
-        obs = state['obs']
-        legal_actions = list(state['legal_actions'].keys())
-        action_probs = self.eval_action_probs(obs, legal_actions)
-        action = np.random.choice(len(action_probs), p=action_probs)
-        info = {'probs': {state['raw_legal_actions'][i]: float(action_probs[i])
-                          for i in range(len(state['legal_actions']))}}
-
-        return action, info
-
-    def eval_action_probs(self, obs, legal_actions):
-        """ Get action probabilities from the policy network """
-        obs_tensor = torch.tensor(obs, dtype=torch.float32, device=self.device)
-        action_probs = self.average_policy_net(obs_tensor).detach().cpu().numpy()
-        action_probs = remove_illegal(action_probs, legal_actions)
-        return action_probs
+        return self.eval_agent.eval_step(state)
 
     def save_model(self, path):
         """Save the model to the specified path."""
@@ -168,3 +158,4 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         """Load the model from the specified path."""
         checkpoint = torch.load(path)
         self.average_policy_net.load_state_dict(checkpoint['average_net_state_dict'])
+        self.eval_agent = EvalAgent(self.average_policy_net, self.device)

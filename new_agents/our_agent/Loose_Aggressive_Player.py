@@ -1,10 +1,4 @@
-import random
-from rlcard.games.limitholdem.utils import compare_hands
-import numpy as np
-import rlcard
-from rlcard.models.model import Model
-from Probability_player import calculate_win_rate, get_remaining_cards
-
+from .Probability_player import calculate_win_rate
 
 # 松凶型玩家，给人一种疯狂的感觉，但是实际有明确的策略性
 

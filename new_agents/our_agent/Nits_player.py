@@ -1,9 +1,4 @@
-import random
-from rlcard.games.limitholdem.utils import compare_hands
-import numpy as np
-import rlcard
-from rlcard.models.model import Model
-from Probability_player import calculate_win_rate, get_remaining_cards
+from .Probability_player import calculate_win_rate
 import torch
 
 
@@ -11,7 +6,7 @@ import torch
 
 # 更改起手逻辑与后续逻辑
 
-class NitsAgent(object,torch.nn.Module):
+class NitsAgent(object):
 
     def __init__(self, num_actions):
 

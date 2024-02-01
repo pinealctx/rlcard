@@ -1,11 +1,3 @@
-import random
-from rlcard.games.limitholdem.utils import compare_hands
-import numpy as np
-import rlcard
-from rlcard.models.model import Model
-from Probability_player import calculate_win_rate, get_remaining_cards
-
-
 # 跟注站：莫的感情的跟注机器，长久地待在底池而很少表现出激进度，即使当他们有很好的牌时也是如此。
 
 class CallingStationAgent(object):

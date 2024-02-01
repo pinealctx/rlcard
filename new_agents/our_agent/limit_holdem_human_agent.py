@@ -2,19 +2,18 @@
 import rlcard
 from rlcard.agents import LimitholdemHumanAgent as HumanAgent
 from rlcard.utils.utils import print_card
-from rlcard.models.limitholdem_rule_models import LimitholdemRuleAgentV1 as RuleAgent
 
-from our_agent.Raise_player import RaiseAgent
-from our_agent.Random_player import RandomAgent
-from our_agent.Probability_player import ProbabilityAgent
-from our_agent.Nits_player import NitsAgent
-from our_agent.Rock_player import RockAgent
-from our_agent.Tight_Aggressive_Player import TightAggressiveAgent
-from our_agent.Weak_Tight_Players import WeakTightAgent
-from our_agent.Maniacs_player import ManiacAgent
-from our_agent.Loose_Aggressive_Player import LooseAggressiveAgent
-from our_agent.Calling_stations_Player import CallingStationAgent
-from our_agent.Donkeys_Player import DonkeyAgent
+from new_agents.our_agent.Raise_player import RaiseAgent
+from new_agents.our_agent.Random_player import RandomAgent
+from new_agents.our_agent.Probability_player import ProbabilityAgent
+from new_agents.our_agent.Nits_player import NitsAgent
+from new_agents.our_agent.Rock_player import RockAgent
+from new_agents.our_agent.Tight_Aggressive_Player import TightAggressiveAgent
+from new_agents.our_agent.Weak_Tight_Players import WeakTightAgent
+from new_agents.our_agent.Maniacs_player import ManiacAgent
+from new_agents.our_agent.Loose_Aggressive_Player import LooseAggressiveAgent
+from new_agents.our_agent.Calling_stations_Player import CallingStationAgent
+from new_agents.our_agent.Donkeys_Player import DonkeyAgent
 
 # Make environment
 env = rlcard.make('limit-holdem')

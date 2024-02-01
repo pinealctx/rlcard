@@ -5,6 +5,7 @@ import numpy as np
 
 # 以随机表示
 
+
 class DonkeyAgent(object):
     ''' A random agent. Random agents is for running toy examples on the card games
     '''

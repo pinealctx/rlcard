@@ -1,8 +1,5 @@
 import random
 from rlcard.games.limitholdem.utils import compare_hands
-import numpy as np
-import rlcard
-from rlcard.models.model import Model
 
 
 def calculate_win_rate(player1_hand, community_cards, num_trials=1000):

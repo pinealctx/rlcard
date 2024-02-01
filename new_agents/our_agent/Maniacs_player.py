@@ -1,9 +1,4 @@
-import random
-from rlcard.games.limitholdem.utils import compare_hands
-import numpy as np
-import rlcard
-from rlcard.models.model import Model
-from Probability_player import calculate_win_rate, get_remaining_cards
+from .Probability_player import calculate_win_rate
 
 
 # 疯狂玩家：玩的十分松，喜欢诈胡且经常诈胡
