@@ -51,6 +51,7 @@ def train(args):
             l2_lambda=args.l2,
             min_training_times=args.min_training_times,
         )
+        agent.load()
     elif args.agent_type == 2:
         agent = DebugOSMCCFRAgent(
             env,

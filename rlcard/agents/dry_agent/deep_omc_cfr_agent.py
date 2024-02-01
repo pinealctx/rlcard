@@ -136,7 +136,9 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         if not os.path.exists(self.model_path):
             return
         file_name = "deep_omc_cfr_model_{}.pth".format(self.process_id)
-        self.load_model(os.path.join(self.model_path, file_name))
+        file_full_path = os.path.join(self.model_path, file_name)
+        self.load_model(file_full_path)
+        print("Load model from {}".format(file_full_path))
 
     def eval_step(self, state):
         """use self policy network to predict action"""
