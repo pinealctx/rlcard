@@ -44,6 +44,7 @@ def train(args):
         agent = DeepOSMCCFRAgent(
             env,
             100000,
+            batch_size=args.batch_size,
             process_id=seed,
             lr=args.lr,
             early_stop_patience=args.estop,
@@ -156,7 +157,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--lr',
         type=float,
-        default=0.00003,
+        default=0.0001,
     )
     parser.add_argument(
         '--estop',
@@ -166,12 +167,17 @@ if __name__ == '__main__':
     parser.add_argument(
         '--l2',
         type=float,
-        default=0.00001,
+        default=0.0001,
     )
     parser.add_argument(
         "--min_training_times",
         type=int,
-        default=2000,
+        default=200,
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=64,
     )
 
     args = parser.parse_args()

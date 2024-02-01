@@ -25,12 +25,13 @@ class PolicyNet(SoftMaxRstNet):
         else:
             self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
+
 class DeepOSMCCFRAgent(OSMCCFRAgent):
     def __init__(self,
                  env,
                  max_lru_size,
                  device_num=0,
-                 batch_size=128,
+                 batch_size=64,
                  process_id=0,
                  activation='leakyrelu',
                  lr=0.00003,
@@ -46,7 +47,7 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         self.average_policy_net = PolicyNet(self.env.state_shape[0][0], self.env.num_actions,
                                             activation=activation,
                                             lr=lr,
-                                            l2_lambda=0).to(self.device)
+                                            l2_lambda=l2_lambda).to(self.device)
         self.average_policy_net.share_memory()
         self.early_stop_patience = early_stop_patience
         self.min_training_times = min_training_times
@@ -59,7 +60,7 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         prev_policy_counter = average_policy_counter
         while self.average_policy_update_count - average_policy_counter < self.max_lru_size/10:
             super().train()
-            if self.iteration % 200 == 0:
+            if self.iteration % 1000 == 0:
                 now = datetime.now()
                 print("Time: {}, Iteration: {}, average policy update count: {}, delta :{}".
                       format(now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -91,42 +92,36 @@ class DeepOSMCCFRAgent(OSMCCFRAgent):
         # scheduler = ReduceLROnPlateau(self.average_policy_net.optimizer, 'min')
 
         # Initialize the EarlyStopping object
-        early_stopping = EarlyStopping(self.early_stop_patience)
+        # early_stopping = EarlyStopping(self.early_stop_patience)
         count = len(states)
         print("Start training model, total data size: {}, average policy pool count: {}".
               format(count, average_policy_pool_count))
-        episode = 0
 
-        min_iterations = (count / self.batch_size) * self.min_training_times
-
-        while True:
-            # Randomly select a batch of data for training
-            indices = np.random.choice(count, self.batch_size, replace=False)
-            inputs = states[indices]
-            labels = targets[indices]
-
-            # Train the model and get the current loss
-            curr_loss = self.train_batch(inputs, labels)
-
+        # min_iterations = (count // self.batch_size) * self.min_training_times
+        for i in range(self.min_training_times):
+            # shuffle the data
+            # perm = torch.randperm(count)
+            # states = states[perm]
+            # targets = targets[perm]
+            curr_loss = 0
+            batch_count = 0
+            for j in range(0, count, self.batch_size):
+                inputs = states[j:j + self.batch_size]
+                labels = targets[j:j + self.batch_size]
+                # Train the model and get the current loss
+                curr_loss += self.train_batch(inputs, labels)
+                batch_count += 1
+            print("Training model, episode: {}, loss: {}".format(i, curr_loss/batch_count))
             # Update the learning rate
             # scheduler.step(curr_loss)
-            episode += 1
-            if episode % 500 == 0:
-                print("Training model, episode: {}, loss: {}".format(episode, curr_loss))
-
-            if episode > min_iterations:
-                # Early stopping check
-                #early_stopping.step(curr_loss)
-                #if early_stopping.early_stop:
-                #    break
-                break
-        print("Finish training model, total episode: {}".format(episode))
+            """if i % 2000 == 0:
+                print("Training model, episode: {}, loss: {}".format(i, curr_loss))"""
+        # print("Finish training model, total episode: {}".format(episode))
 
     def train_batch(self, inputs, labels):
         self.average_policy_net.lock.acquire()
         try:
-            self.average_policy_net.train_model(inputs, labels)
-            curr_loss = self.average_policy_net.loss_function(self.average_policy_net(inputs), labels).item()
+            curr_loss = self.average_policy_net.train_model(inputs, labels)
         finally:
             self.average_policy_net.lock.release()
         return curr_loss

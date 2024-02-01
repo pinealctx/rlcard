@@ -76,6 +76,7 @@ class RstNet(nn.Module):
         loss = self.loss_function(prediction, target)
         loss.backward()
         self.optimizer.step()
+        return loss.item()
 
 
 class SoftMaxRstNet(RstNet):
