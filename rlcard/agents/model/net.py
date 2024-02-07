@@ -91,13 +91,27 @@ class SoftMaxRstNet(RstNet):
         super().__init__(input_size, mlp_layers, output_size, activation, lr)
         self.softmax = nn.Softmax(dim=-1)
         self.lock = Lock()
-        self.loss_function = nn.KLDivLoss()
+        self.loss_function = nn.KLDivLoss(reduction='batchmean')
 
     def forward(self, inputs):
         state = inputs
         x = self.mlp(state)
         x = self.softmax(x)
         return x
+
+
+class SoftMaxNet(nn.Module):
+    """Implements the SoftMax network as an MLP.
+    """
+
+    def __init__(self,
+                 input_size,
+                 layers,
+                 output_size,
+                 activation='leakyrelu',
+                 lr=0.0001,
+                 **kwargs):
+        super().__init__(**kwargs)
 
 
 def he_normal(tensor, activation):

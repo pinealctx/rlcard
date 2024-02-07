@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Hand:
     def __init__(self, all_cards):
         self.all_cards = all_cards # two hand cards + five public cards
@@ -567,6 +568,7 @@ def compare_hands(hands):
     potential_winner_index = [i for i, j in enumerate(hand_category) if j == max(hand_category)]# potential winner are those with same max card_catagory
 
     return final_compare(hands, potential_winner_index, all_players)
+
 
 def final_compare(hands, potential_winner_index, all_players):
     '''
