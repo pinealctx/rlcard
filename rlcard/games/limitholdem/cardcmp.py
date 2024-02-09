@@ -3,8 +3,6 @@ import numpy as np
 from collections import Counter
 from enum import Enum
 
-from .cardval import RankCategory, CardValue
-
 """card category"""
 card_category = {
     1: 'High Card', 2: 'One Pair', 3: 'Two Pair', 4: 'Three of a Kind',
@@ -87,6 +85,69 @@ class Color(Enum):
         return self.__str__()
 
 
+class RankCategory(Enum):
+    STRAIGHT_FLUSH = 8
+    FOUR_KIND = 7
+    FULL_HOUSE = 6
+    FLUSH = 5
+    STRAIGHT = 4
+    THREE_KIND = 3
+    TWO_PAIR = 2
+    ONE_PAIR = 1
+    HIGH_CARD = 0
+
+
+class CardValue(object):
+    """
+       牌面分数编码
+       6*4 bits
+       20-23 bits      |     16-19 bits |     12-15bits |     8-11 bits |        4-7 bits |    0-3 bits
+       category rank   |
+       straight flush  |             NA |            NA |            NA |              NA |    straight rank(start card)
+                                                                                                 A2345 : 1 ... TJQKA : 10
+       four kind       |             NA |            NA |            NA |              NA |    single card in four kind
+       full house      |             NA |            NA |            NA |     three cards |    two cards
+       flush           |      1st card  |      2nd card | 3rd      card |        4th card |    5th card
+       straight        |             NA |            NA |            NA |              NA |    straight rank(start card)
+                                                                                                 A2345 : 1 ... TJQKA : 10
+       three kind      |             NA |            NA |   three cards | 1st single card |    2nd single card
+       two pair        |             NA |            NA | 1st two cards |  2nd two cards  |    single card
+       one pair        |             NA |     two cards |      1st card |       2nd card  |    3th card
+       high card       |      1st card  |      2nd card |      3rd card |        4th card |    5th card
+    """
+
+    def __init__(self, rank: RankCategory):
+        self.rank = rank << 20
+
+    def __init__(self, rank: RankCategory, *cards):
+        """cards, 小牌先入栈"""
+        self.rank = rank << 20
+        for i, card in enumerate(cards):
+            self.rank += card << (4 * i)
+
+    def add_card(self, card, idx=0):
+        self.rank += card << (4 * idx)
+        return self
+
+    def add_cards(self, cards: list):
+        """from low to high"""
+        for i, card in cards:
+            self.rank += card << (4 * i)
+        return self
+
+    def add_np_cards(self, cards: np.ndarray):
+        """from low to high"""
+        for i, card in enumerate(cards):
+            self.rank += card << (4 * i)
+        return self
+
+    def add_card_v2(self, *cards):
+        """cards, 小牌先入栈"""
+        for i, card in enumerate(cards):
+            self.rank += card << (4 * i)
+        return self
+
+
 class CardComb(object):
     """
     use 4*14 matrix to represent the card combination
@@ -132,7 +193,6 @@ class CardComb(object):
         """计算牌力"""
         # 先统计列
         self.count_col()
-        value = 0
 
         # 同花顺/同花/顺子
         if self.can_count_straight_or_flush():
@@ -154,14 +214,61 @@ class CardComb(object):
                 return value
 
         # 按优先级来 4条/葫芦/3条/2对/1对/高牌
+        return self.count_misc_combine()
+
+    def count_col(self):
+        """按列统计"""
+        self.col_counter = np.sum(self.card_matrix, axis=0)
+        for i in range(1, 14):
+            if self.col_counter[i] == 4:
+                self.card4_idx = np.append(self.card4_idx, i)
+            elif self.col_counter[i] == 3:
+                self.card3_idx = np.append(self.card3_idx, i)
+            elif self.col_counter[i] == 2:
+                self.card2_idx = np.append(self.card2_idx, i)
+            elif self.col_counter[i] == 1:
+                self.card1_idx = np.append(self.card1_idx, i)
+
+    def count_row(self):
+        """按行统计,不包括第一列"""
+        self.row_counter = np.sum(self.card_matrix[:, 1:], axis=1)
+        s_color = np.where(self.row_counter >= 5)
+        if len(s_color) > 0:
+            # 有同花
+            self.flush_idx = s_color[0][0]
+
+    def can_count_straight_or_flush(self):
+        """判断是否需要进行顺子或同花的判断"""
+        # 1. 有4张时肯定没有顺子或同花
+        # 2. 有2个3张时肯定没有顺子或同花
+        # 3. 有1个3张和1个2张时肯定没有顺子或同花
+        # 4. 有3个2张时肯定没有顺子或同花
+        # 5. 换个角度，单张牌计数大于等于3时才可能有顺子或同花
+        return len(self.card1_idx) >= 3
+
+    def count_straight_flush(self, flush_idx: int):
+        """判断同花顺"""
+        for i in range(10):
+            if np.all(self.card_matrix[flush_idx, i: i + 5] == 1):
+                return CardValue(RankCategory.STRAIGHT_FLUSH).add_card(i + 1).rank
+        return -1
+
+    def count_straight(self):
+        """判断顺子"""
+        for i in range(10):
+            if np.all(self.col_counter[i: i + 5] >= 1):
+                return CardValue(RankCategory.STRAIGHT).add_card(i + 1).rank
+        return -1
+
+    def count_misc_combine(self):
+        """依次优先级统计4条/葫芦/3条/2对/1对/高牌"""
         card3_size = len(self.card3_idx)
         card2_size = len(self.card2_idx)
         if len(self.card4_idx) > 0:
             return self.count_four_kind(CardValue(RankCategory.FOUR_KIND), self.card4_idx[0], self.col_counter)
         elif card3_size == 2:
             # 2个3条，肯定是葫芦
-            card3s = self.card3_idx.tolist()
-            return CardValue(RankCategory.FULL_HOUSE).add_cards(card3s).rank
+            return CardValue(RankCategory.FULL_HOUSE).add_np_cards(self.card3_idx).rank
         elif card3_size == 1:
             if card2_size >= 1:
                 # 1个3条和1个或2个2条，肯定是葫芦
@@ -195,261 +302,17 @@ class CardComb(object):
             # 高牌
             return self.count_high_card(CardValue(RankCategory.HIGH_CARD), self.col_counter)
 
-        # 统计顺子
-        for i in range(10):
-            if np.all(self.col_counter[i: i + 5] == 1):
-                self.straight[i] = 1
-                self.has_straight = True
-        # 先看同花顺
-        if self.has_straight and self.has_flush:
-            for i in range(4):
-                if np.all(self.card_matrix[i, :] == 1):
-                    return CardValue(RankCategory.STRAIGHT_FLUSH, 14).rank
-        return self
-
-    def count_col(self):
-        """按列统计"""
-        self.col_counter = np.sum(self.card_matrix, axis=0)
-        for i in range(1, 14):
-            if self.col_counter[i] == 4:
-                self.card4_idx = np.append(self.card4_idx, i)
-            elif self.col_counter[i] == 3:
-                self.card3_idx = np.append(self.card3_idx, i)
-            elif self.col_counter[i] == 2:
-                self.card2_idx = np.append(self.card2_idx, i)
-            elif self.col_counter[i] == 1:
-                self.card1_idx = np.append(self.card1_idx, i)
-
-    def count_row(self):
-        """按行统计,不包括第一列"""
-        self.row_counter = np.sum(self.card_matrix[:, 1:], axis=1)
-        s_color = np.where(self.row_counter >= 5)
-        if len(s_color) > 0:
-            # 有同花
-            self.flush_idx = s_color[0][0]
-
-    def can_count_straight_or_flush(self):
-        """判断是否需要进行顺子或同花的判断"""
-        # 1. 有4张时肯定没有顺子或同花
-        # 2. 有2个3张时肯定没有顺子或同花
-        # 3. 有1个3张和1个2张时肯定没有顺子或同花
-        # 4. 有3个2张时肯定没有顺子或同花
-        # 5. 换个角度，单张牌计数大于等于3时才可能有顺子或同花
-        return len(self.card1_idx) >= 3
-
-    def count_straight_flush(self, flush_idx):
-        """判断同花顺"""
-        for i in range(10):
-            if np.all(self.card_matrix[flush_idx, i: i + 5] == 1):
-                return CardValue(RankCategory.STRAIGHT_FLUSH).add_card(i + 1).rank
-        return -1
-
-    def count_straight(self):
-        """判断顺子"""
-        for i in range(10):
-            if np.all(self.col_counter[i: i + 5] >= 1):
-                return CardValue(RankCategory.STRAIGHT).add_card(i + 1).rank
-        return -1
-
     @staticmethod
-    def count_high_card(rank_cat, arr):
+    def count_high_card(rank_cat: CardValue, arr: np.ndarray):
         """统计高牌"""
         # 从最后的idx开始，找到5个等于1的idx就可以组成高牌
         return rank_cat.add_cards(np.argwhere(arr == 1).flatten()[-5:]).rank
 
     @staticmethod
-    def count_four_kind(rank_cat, idx, arr):
+    def count_four_kind(rank_cat: CardValue, idx: int, arr: np.ndarray):
         """统计4张-找到4张组合最大的单牌"""
         # 倒着查找
         for i in range(13, -1, 0):
             if 4 > arr[i] > 0:
                 return rank_cat.add_card_v2(i, idx + 1).rank
         raise ValueError('count_four_kind error')
-
-
-'''
-    def straight_flush_rank(self):
-        """in same color and continuous"""
-        for i in range(4):
-            for mask in straight_idx_code_mask:
-                if np.all(self.card_matrix[i, :] == mask):
-                    return CardValue(RankCategory.STRAIGHT_FLUSH, mask[1]).rank
-        return -1
-
-    def four_kind_rank(self):
-        """four same number"""
-        for i in range(13):
-            if np.sum(self.card_matrix[:, i]) == 4:
-                # find four some number and the left one
-
-        return -1
-
-    def full_house_rank(self):
-        """three same number and one pair"""
-        three_kind = -1
-        one_pair = -1
-        for i in range(13):
-            s = np.sum(self.card_bytes[i: 52: 13])
-            if s == 3:
-                three_kind = i+1
-            elif s == 2:
-                one_pair = i+1
-        if three_kind != -1 and one_pair != -1:
-            return three_kind
-        return -1
-'''
-
-
-class FiveCard(object):
-    def __init__(self):
-        self.cards = []
-        self.suits = []
-        self.ranks = []
-        self.card_count = {}
-        self.suit_count = {}
-        self.rank_count = {}
-        self.straight = False
-        self.flush = False
-        self.straight_flush = False
-        self.royal_flush = False
-        self.four_kind = False
-        self.three_kind = False
-        self.two_pair = False
-        self.one_pair = False
-        self.high_card = False
-        self.rank = 0
-        self.hand = None
-        self.hand_name = None
-        self.hand_rank = None
-        self.hand_rank_name = None
-
-    def get_hand(self, cards):
-        self.cards = cards
-        self.suits = [card[1] for card in cards]
-        self.ranks = [card[0] for card in cards]
-        self.card_count = Counter(self.cards)
-        self.suit_count = Counter(self.suits)
-        self.rank_count = Counter(self.ranks)
-        self.is_straight()
-        self.is_flush()
-        self.is_straight_flush()
-        self.is_royal_flush()
-        self.is_four_kind()
-        self.is_three_kind()
-        self.is_two_pair()
-        self.is_one_pair()
-        self.is_high_card()
-        self.get_hand_rank()
-        self.get_hand_name()
-        return self.hand
-
-    def is_straight(self):
-        if len(self.rank_count) == 5:
-            if max(self.ranks) - min(self.ranks) == 4:
-                self.straight = True
-                return True
-        return False
-
-    def is_flush(self):
-        if len(self.suit_count) == 1:
-            self.flush = True
-            return True
-        return False
-
-    def is_straight_flush(self):
-        if self.straight and self.flush:
-            self.straight_flush = True
-            return True
-        return False
-
-    def is_royal_flush(self):
-        if self.straight_flush and max(self.ranks) == 14:
-            self.royal_flush = True
-            return True
-        return False
-
-    def is_four_kind(self):
-        if 4 in self.rank_count.values():
-            self.four_kind = True
-            return True
-        return False
-
-    def is_three_kind(self):
-        if 3 in self.rank_count.values():
-            self.three_kind = True
-            return True
-        return False
-
-    def is_two_pair(self):
-        if list(self.rank_count.values()).count(2) == 2:
-            self.two_pair = True
-            return True
-        return False
-
-    def is_one_pair(self):
-        if 2 in self.rank_count.values():
-            self.one_pair = True
-            return True
-        return False
-
-    def is_high_card(self):
-        self.high_card = True
-        return True
-
-    def get_hand_rank(self):
-        if self.royal_flush:
-            self.hand_rank = 10
-        elif self.straight_flush:
-            self.hand_rank = 9
-        elif self.four_kind:
-            self.hand_rank = 8
-        elif self.three_kind and self.one_pair:
-            self.hand_rank = 7
-        elif self.flush:
-            self.hand_rank = 6
-        elif self.straight:
-            self.hand_rank = 5
-        elif self.three_kind:
-            self.hand_rank = 4
-        elif self.two_pair:
-            self.hand_rank = 3
-        elif self.one_pair:
-            self.hand_rank = 2
-        else:
-            self.hand_rank = 1
-        return self.hand_rank
-
-    def get_hand_name(self):
-        if self.royal_flush:
-            self.hand_name = 'Royal Flush'
-        elif self.straight_flush:
-            self.hand_name = 'Straight Flush'
-        elif self.four_kind:
-            self.hand_name = 'Four of a Kind'
-        elif self.three_kind and self.one_pair:
-            self.hand_name = 'Full House'
-        elif self.flush:
-            self.hand_name = 'Flush'
-        elif self.straight:
-            self.hand_name = 'Straight'
-        elif self.three_kind:
-            self.hand_name = 'Three of a Kind'
-        elif self.two_pair:
-            self.hand_name = 'Two Pair'
-        elif self.one_pair:
-            self.hand_name = 'One Pair'
-        else:
-            self.hand_name = 'High Card'
-        return self.hand_name
-
-    def get_hand(self, cards):
-        self.hand = (self.hand_rank, self.hand_name)
-        return self.hand
-
-    def compare(self, hand1, hand2):
-        if hand1[0] > hand2[0]:
-            return 1
-        elif hand1[0] < hand2[0]:
-            return -1
-        else:
-            return 0
