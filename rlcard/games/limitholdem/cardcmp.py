@@ -1,57 +1,42 @@
+import random
+import time
+
 import numpy as np
 
-from collections import Counter
 from enum import Enum
 
-"""card category"""
-card_category = {
-    1: 'High Card', 2: 'One Pair', 3: 'Two Pair', 4: 'Three of a Kind',
-    5: 'Straight', 6: 'Flush', 7: 'Full House', 8: 'Four of a Kind',
-    9: 'Straight Flush',
-}
+from rlcard.games.limitholdem.utils import compare_hands, Hand
+
 
 """card number index code"""
 card_idx_code = {
     'A': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, 'T': 9, 'J': 10, 'Q': 11, 'K': 12
 }
 
-"""card rank code"""
-card_rank_code = [14, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+"""card code idx"""
+card_code_idx = {
+    0: 'A', 13: 'A', 1: '2', 2: '3', 3: '4', 4: '5', 5: '6', 6: '7', 7: '8', 8: '9', 9: 'T', 10: 'J', 11: 'Q', 12: 'K'
+}
 
-"""straight idx code"""
-"""use mask 13 length list to represent straight idx"""
-straight_idx_code_mask = [
-    # TJQKA
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1], 10),
-    # 9TJQK
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1], 9),
-    # 89TJQ
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0], 8),
-    # 789TJ
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0], 7),
-    # 6789T
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], 6),
-    # 56789
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0], 5),
-    # 45678
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0], 4),
-    # 34567
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0], 3),
-    # 23456
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0], 2),
-    # A2345
-    # A  2  3  4  5  6  7  8  9  T  J  Q  K
-    ([1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0], 1),
+"""rank levels"""
+rank_levels = [
+    "High Card",
+    "One Pair",
+    "Two Pair",
+    "Three of a Kind",
+    "Straight",
+    "Flush",
+    "Full House",
+    "Four of a Kind",
+    "Straight Flush",
 ]
+
+"""all cards"""""
+whole_cards = ['CA', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'CT', 'CJ', 'CQ', 'CK',
+               'DA', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'DT', 'DJ', 'DQ', 'DK',
+               'HA', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'HT', 'HJ', 'HQ', 'HK',
+               'SA', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'ST', 'SJ', 'SQ', 'SK',
+               ]
 
 
 class Color(Enum):
@@ -85,6 +70,35 @@ class Color(Enum):
         return self.__str__()
 
 
+class PreAllocNpArray(object):
+    def __init__(self, size):
+        self.size = size
+        self.arr = np.empty(size, dtype=np.int8)
+        self.idx = 0
+
+    def add(self, value):
+        self.arr[self.idx] = value
+        self.idx += 1
+        return self
+
+    def reset(self):
+        self.idx = 0
+        return self
+
+    def get(self):
+        return self.arr[:self.idx]
+
+    def __len__(self):
+        return self.idx
+
+    def __getitem__(self, item):
+        """support negative index"""
+        if item < 0:
+            return self.arr[self.idx + item]
+        else:
+            return self.arr[item]
+
+
 class RankCategory(Enum):
     STRAIGHT_FLUSH = 8
     FOUR_KIND = 7
@@ -95,6 +109,9 @@ class RankCategory(Enum):
     TWO_PAIR = 2
     ONE_PAIR = 1
     HIGH_CARD = 0
+
+    def __str__(self):
+        return rank_levels[self.value]
 
 
 class CardValue(object):
@@ -112,27 +129,15 @@ class CardValue(object):
                                                                                                  A2345 : 1 ... TJQKA : 10
        three kind      |             NA |            NA |   three cards | 1st single card |    2nd single card
        two pair        |             NA |            NA | 1st two cards |  2nd two cards  |    single card
-       one pair        |             NA |     two cards |      1st card |       2nd card  |    3th card
+       one pair        |             NA |     two cards |      1st card |       2nd card  |    3rd card
        high card       |      1st card  |      2nd card |      3rd card |        4th card |    5th card
     """
 
     def __init__(self, rank: RankCategory):
-        self.rank = rank << 20
-
-    def __init__(self, rank: RankCategory, *cards):
-        """cards, 小牌先入栈"""
-        self.rank = rank << 20
-        for i, card in enumerate(cards):
-            self.rank += card << (4 * i)
+        self.rank = rank.value << 20
 
     def add_card(self, card, idx=0):
         self.rank += card << (4 * idx)
-        return self
-
-    def add_cards(self, cards: list):
-        """from low to high"""
-        for i, card in cards:
-            self.rank += card << (4 * i)
         return self
 
     def add_np_cards(self, cards: np.ndarray):
@@ -146,6 +151,16 @@ class CardValue(object):
         for i, card in enumerate(cards):
             self.rank += card << (4 * i)
         return self
+
+    @staticmethod
+    def value_to_str(value):
+        cat_rank = value >> 20
+        cat_rank_str = rank_levels[cat_rank]
+        for i in range(5):
+            card = (value >> (4 * i)) & 0xF
+            if card != 0:
+                cat_rank_str += f' {card_code_idx[card]}'
+        return cat_rank_str
 
 
 class CardComb(object):
@@ -167,10 +182,10 @@ class CardComb(object):
         # 同花花色index
         self.flush_idx = -1
         # 列统计计数
-        self.card4_idx = np.empty(1, dtype=np.int8)
-        self.card3_idx = np.empty(3, dtype=np.int8)
-        self.card2_idx = np.empty(3, dtype=np.int8)
-        self.card1_idx = np.empty(7, dtype=np.int8)
+        self.card4_idx = PreAllocNpArray(1)
+        self.card3_idx = PreAllocNpArray(2)
+        self.card2_idx = PreAllocNpArray(3)
+        self.card1_idx = PreAllocNpArray(7)
 
     def add_card(self, card: str):
         """use numpy method"""
@@ -189,30 +204,15 @@ class CardComb(object):
             self.add_card(card)
         return self
 
-    def do_count(self):
+    def count_value(self):
         """计算牌力"""
         # 先统计列
         self.count_col()
 
         # 同花顺/同花/顺子
-        if self.can_count_straight_or_flush():
-            # 统计行(剔除第一列)
-            self.count_row()
-
-            # 有同花的情况
-            if self.flush_idx != -1:
-                # 优先统计同花顺
-                value = self.count_straight_flush(self.flush_idx)
-                if value != -1:
-                    return value
-                # 没有同花顺，统计同花
-                # 从最后的idx开始到1，找到5个大于等于1的idx就可以组成同花高牌
-                return self.count_high_card(CardValue(RankCategory.FLUSH), self.card_matrix[self.flush_idx, :])
-            # 统计顺子
-            value = self.count_straight()
-            if value != -1:
-                return value
-
+        value = self.count_flush_or_straight_or_both()
+        if value != -1:
+            return value
         # 按优先级来 4条/葫芦/3条/2对/1对/高牌
         return self.count_misc_combine()
 
@@ -221,19 +221,19 @@ class CardComb(object):
         self.col_counter = np.sum(self.card_matrix, axis=0)
         for i in range(1, 14):
             if self.col_counter[i] == 4:
-                self.card4_idx = np.append(self.card4_idx, i)
+                self.card4_idx.add(i)
             elif self.col_counter[i] == 3:
-                self.card3_idx = np.append(self.card3_idx, i)
+                self.card3_idx.add(i)
             elif self.col_counter[i] == 2:
-                self.card2_idx = np.append(self.card2_idx, i)
+                self.card2_idx.add(i)
             elif self.col_counter[i] == 1:
-                self.card1_idx = np.append(self.card1_idx, i)
+                self.card1_idx.add(i)
 
     def count_row(self):
         """按行统计,不包括第一列"""
         self.row_counter = np.sum(self.card_matrix[:, 1:], axis=1)
         s_color = np.where(self.row_counter >= 5)
-        if len(s_color) > 0:
+        if s_color[0].size > 0:
             # 有同花
             self.flush_idx = s_color[0][0]
 
@@ -246,18 +246,36 @@ class CardComb(object):
         # 5. 换个角度，单张牌计数大于等于3时才可能有顺子或同花
         return len(self.card1_idx) >= 3
 
+    def count_flush_or_straight_or_both(self):
+        """统计同花顺/同花/顺子"""
+        if self.can_count_straight_or_flush():
+            # 统计行(剔除第一列)
+            self.count_row()
+            # 有同花的情况
+            if self.flush_idx != -1:
+                # 优先统计同花顺
+                value = self.count_straight_flush(self.flush_idx)
+                if value != -1:
+                    return value
+                # 没有同花顺，统计同花
+                # 从最后的idx开始到1，找到5个大于等于1的idx就可以组成同花高牌
+                return self.count_high_card(CardValue(RankCategory.FLUSH), self.card_matrix[self.flush_idx, :])
+            # 统计顺子
+            return self.count_straight()
+        return -1
+
     def count_straight_flush(self, flush_idx: int):
         """判断同花顺"""
-        for i in range(10):
+        for i in range(9, -1, -1):
             if np.all(self.card_matrix[flush_idx, i: i + 5] == 1):
-                return CardValue(RankCategory.STRAIGHT_FLUSH).add_card(i + 1).rank
+                return CardValue(RankCategory.STRAIGHT_FLUSH).add_card(i).rank
         return -1
 
     def count_straight(self):
         """判断顺子"""
-        for i in range(10):
+        for i in range(9, -1, -1):
             if np.all(self.col_counter[i: i + 5] >= 1):
-                return CardValue(RankCategory.STRAIGHT).add_card(i + 1).rank
+                return CardValue(RankCategory.STRAIGHT).add_card(i).rank
         return -1
 
     def count_misc_combine(self):
@@ -268,7 +286,7 @@ class CardComb(object):
             return self.count_four_kind(CardValue(RankCategory.FOUR_KIND), self.card4_idx[0], self.col_counter)
         elif card3_size == 2:
             # 2个3条，肯定是葫芦
-            return CardValue(RankCategory.FULL_HOUSE).add_np_cards(self.card3_idx).rank
+            return CardValue(RankCategory.FULL_HOUSE).add_np_cards(self.card3_idx.get()).rank
         elif card3_size == 1:
             if card2_size >= 1:
                 # 1个3条和1个或2个2条，肯定是葫芦
@@ -283,6 +301,14 @@ class CardComb(object):
                     self.card1_idx[-1],
                     self.card3_idx[0],
                 ).rank
+        elif card2_size == 3:
+            # 3个2条
+            max_card = max(self.card2_idx[0], self.card1_idx[0])
+            return CardValue(RankCategory.TWO_PAIR).add_card_v2(
+                max_card,
+                self.card2_idx[1],
+                self.card2_idx[2],
+            ).rank
         elif card2_size == 2:
             # 2个2条
             return CardValue(RankCategory.TWO_PAIR).add_card_v2(
@@ -306,13 +332,101 @@ class CardComb(object):
     def count_high_card(rank_cat: CardValue, arr: np.ndarray):
         """统计高牌"""
         # 从最后的idx开始，找到5个等于1的idx就可以组成高牌
-        return rank_cat.add_cards(np.argwhere(arr == 1).flatten()[-5:]).rank
+        return rank_cat.add_np_cards(np.argwhere(arr == 1).flatten()[-5:]).rank
 
     @staticmethod
     def count_four_kind(rank_cat: CardValue, idx: int, arr: np.ndarray):
         """统计4张-找到4张组合最大的单牌"""
         # 倒着查找
-        for i in range(13, -1, 0):
+        for i in range(13, -1, -1):
             if 4 > arr[i] > 0:
-                return rank_cat.add_card_v2(i, idx + 1).rank
+                return rank_cat.add_card_v2(i, idx).rank
         raise ValueError('count_four_kind error')
+
+
+def compare_hands_v1(player1, player2, community_cards):
+    """比较两名玩家的手牌"""
+    player1_cards = player1 + community_cards
+    player2_cards = player2 + community_cards
+    winner = compare_hands([player1_cards, player2_cards])
+    if winner[0] == 1:
+        if winner[1] == 1:
+            return 0
+        else:
+            return 1
+    else:
+        return -1
+
+
+def debug_compare_hands_v1(p1, p2, community_cards):
+    h1, h2 = Hand(p1 + community_cards), Hand(p2 + community_cards)
+    h1.evaluateHand()
+    h2.evaluateHand()
+    print("player1:", h1.best_five)
+    print("player2:", h2.best_five)
+
+
+def compare_hands_v2(player1, player2, community_cards):
+    player1_comb = CardComb().add_cards(player1 + community_cards)
+    player2_comb = CardComb().add_cards(player2 + community_cards)
+
+    player1_value = player1_comb.count_value()
+    player2_value = player2_comb.count_value()
+
+    if player1_value > player2_value:
+        return 1
+    elif player1_value < player2_value:
+        return -1
+    else:
+        return 0
+
+
+def debug_compare_hands_v2(p1, p2, community_cards):
+    player1_comb = CardComb().add_cards(p1 + community_cards)
+    player2_comb = CardComb().add_cards(p2 + community_cards)
+    player1_value = player1_comb.count_value()
+    player2_value = player2_comb.count_value()
+
+    print("player1:", CardValue.value_to_str(player1_value), player1_value)
+    print("player2:", CardValue.value_to_str(player2_value), player2_value)
+
+
+def compare_v1_v2(num_trials):
+    for i in range(num_trials):
+        random_cards = random.sample(whole_cards, 9)
+        player1_hand, player2_hand, community_cards = \
+            random_cards[:2], random_cards[2:4], random_cards[4:]
+        cp1 = compare_hands_v1(player1_hand, player2_hand, community_cards)
+        cp2 = compare_hands_v2(player1_hand, player2_hand, community_cards)
+        if cp1 != cp2:
+            print(player1_hand, player2_hand, community_cards, cp1, cp2)
+            debug_compare_hands_v1(player1_hand, player2_hand, community_cards)
+            debug_compare_hands_v2(player1_hand, player2_hand, community_cards)
+        if i % 1000000 == 0:
+            print('num_trials:', i)
+
+
+def compare_v1_v2_time(fn, num_trials):
+    start = time.time()
+    for i in range(num_trials):
+        random_cards = random.sample(whole_cards, 9)
+        player1_hand, player2_hand, community_cards = \
+            random_cards[:2], random_cards[2:4], random_cards[4:]
+        fn(player1_hand, player2_hand, community_cards)
+    end = time.time()
+    print(fn.__name__, end - start, "avg:", (end - start) / num_trials)
+
+
+def count_player_hand(hand):
+    comb = CardComb().add_cards(hand)
+    value = comb.count_value()
+    print("value:", value, CardValue.value_to_str(value))
+
+
+if __name__ == '__main__':
+    # debug_compare_hands_v2(['D9', 'D2'], ['S4', 'S9'], ['S3', 'D4', 'C9', 'DQ', 'D8'])
+    # debug_compare_hands_v2(['DQ', 'D7'], ['C6', 'D9'], ['SA', 'H6', 'H9', 'CK', 'HA'])
+    # count_player_hand(['C4', 'CK', 'CA', 'SK', 'DT', 'D4', 'SA'])
+    # compare_v1_v2_time(compare_hands_v1, 100000)
+    # compare_v1_v2_time(compare_hands_v2, 100000)
+    compare_v1_v2(1000000 * 100)
