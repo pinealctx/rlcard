@@ -1,37 +1,20 @@
 import random
 import itertools
 import argparse
-from datetime import datetime
-
 import pandas as pd
+import logging
 
+from datetime import datetime
 from new_agents.our_agent.Probability_player import get_remaining_cards, calculate_win_rate as calculate_win_rate_p2
 from rlcard.games.limitholdem.cardcmp import CardComb, whole_cards
 from rlcard.games.limitholdem.utils import compare_hands
 
-seq_idx = [
-    (0, 64),  # 0
-    (64, 128),  # 1
-    (128, 192),  # 2
-    (192, 256),  # 3
-    (256, 320),  # 4
-    (320, 384),  # 5
-    (384, 448),  # 6
-    (448, 512),  # 7
-    (512, 576),  # 8
-    (576, 640),  # 9
-    (640, 704),  # 10
-    (704, 768),  # 11
-    (768, 832),  # 12
-    (832, 896),  # 13
-    (896, 960),  # 14
-    (960, 1024),  # 15
-    (1024, 1088),  # 16
-    (1088, 1152),  # 17
-    (1152, 1216),  # 18
-    (1216, 1280),  # 19
-    (1280, 1326),  # 20
-]
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+
+# split 0-1326 hands into seq_idx, each index has 13 hands
+seq_idx = [(i * 10, (i + 1) * 10) for i in range(132)] + [(1320, 1326)]
+
+hand_combs = list(itertools.combinations(whole_cards, 2))
 
 
 def calculate_win_rate_quick(player1_hand, community_card, player_num=2, num_trials=2000):
@@ -77,48 +60,89 @@ def save_before_flop_win_rate(player_num=2, num_trials=2000):
     """calculate win rate of all possible hands before flop
     save it to pandas dataframe
     """
-    print('start time:', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logging.info('start save_before_flop_win_rate, play num:{}, num trials:{}'.format(player_num, num_trials))
     p1_hands = list(itertools.combinations(whole_cards, 2))
     win_rate = []
-    for p1_hand in p1_hands:
+    for index, p1_hand in enumerate(p1_hands):
         win_rate.append({
             'hands': p1_hand,
             'community_card': [],
             'win_rate': calculate_win_rate_quick(list(p1_hand), [], player_num, num_trials),
         })
+        logging.info('finish {}/{}'.format(index + 1, len(p1_hands)))
 
     # save to pandas dataframe
     df = pd.DataFrame(win_rate)
-    df.to_csv('before_flop_win_rate{}.csv'.format(player_num), index=False)
+    df.to_parquet('before_flop_win_rate{}.parquet'.format(player_num), index=False)
 
 
-def save_win_rate(idx: int, player_num=2, num_trials=2000, random_sample_count=3000):
+def save_flop_win_rate(idx: int, player_num=2, num_trials=2000):
     """calculate win rate of all possible hands after flop
     save it to pandas dataframe
     """
-    print('start time:', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    p1_hands = list(itertools.combinations(whole_cards, 2))
-    win_rate = []
+
+    def flop(left_cards: list):
+        """Generate flop cards"""
+        for combo in itertools.combinations(left_cards, 3):
+            yield list(combo)
+
+    save_win_rate_with_gen(idx, flop, player_num, num_trials)
+
+
+def save_turn_win_rate(idx: int, player_num=2, num_trials=2000, random_sample_count=20000):
+    """calculate win rate of all possible hands after turn
+    save it to pandas dataframe
+    """
+
+    def turn(left_cards: list):
+        """Generate turn cards"""
+        for _ in range(random_sample_count):
+            yield random.sample(left_cards, 4)
+
+    save_win_rate_with_gen(idx, turn, player_num, num_trials)
+
+
+def save_river_win_rate(idx: int, player_num=2, num_trials=2000, random_sample_count=100000):
+    """calculate win rate of all possible hands after river
+    save it to pandas dataframe
+    """
+
+    def river(left_cards: list):
+        """Generate river cards"""
+        for _ in range(random_sample_count):
+            yield random.sample(left_cards, 5)
+
+    save_win_rate_with_gen(idx, river, player_num, num_trials)
+
+
+def save_win_rate_with_gen(idx: int, generator, player_num=2, num_trials=2000):
+    """calculate win rate of all possible hands with community card generated func
+    save it to pandas dataframe
+    """
     start_idx, end_idx = seq_idx[idx]
-    p1_hands = p1_hands[start_idx:end_idx]
+    logging.info('start sav rate of {}, player num: {}, idx:{}，{}-{}'.
+                 format(generator.__name__, player_num, idx, start_idx, end_idx))
+    win_rate = []
+    p1_hands = hand_combs[start_idx:end_idx]
+    count = 0
     for index, p1_hand in enumerate(p1_hands):
         p1_hand_list = list(p1_hand)
         left_cards = get_remaining_cards(p1_hand_list)
-        # random sample community cards, it could be 3 cards or 4 cards or 5 cards
-        for _ in range(random_sample_count):
-            n = random.randint(3, 5)
-            community_card = random.sample(left_cards, n)
+        for community_card in generator(left_cards):
             win_rate.append({
                 'hands': p1_hand_list,
                 'community_card': community_card,
                 'win_rate': calculate_win_rate_quick(p1_hand_list, community_card, player_num, num_trials),
             })
-        print('current time:{} finish {}/{}'.format(
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), index + 1, len(p1_hands)))
+            count += 1
+            if count % 1000 == 0:
+                logging.info('simulate count:{}'.format(count))
+        logging.info('finish {}/{}'.format(index + 1, len(p1_hands)))
 
     # save to pandas dataframe
     df = pd.DataFrame(win_rate)
-    df.to_csv('flop_win_rate{}-{}-{}.csv'.format(player_num, start_idx, end_idx), index=False)
+    df.to_parquet('win_rate-{}-{}-{:0>5d}-{:0>5d}.parquet'.format(generator.__name__, player_num, start_idx, end_idx),
+                  index=False)
 
 
 def compare_win_rate(cards: str, player_num=2, num_trials=2000):
@@ -159,13 +183,19 @@ if __name__ == '__main__':
         '--step',
         type=str,
         default='before_flop',
-        help='before_flop/flop/compare',
+        help='compare/before_flop/flop/turn/river',
     )
     parser.add_argument(
-        '--sample_count',
+        '--turn_sample_count',
         type=int,
-        default=4000,
-        help='number of samples for each hand'
+        default=50000,
+        help='number of samples for turn community cards'
+    )
+    parser.add_argument(
+        '--river_sample_count',
+        type=int,
+        default=150000,
+        help='number of samples for river community cards'
     )
     parser.add_argument(
         '--index',
@@ -181,9 +211,13 @@ if __name__ == '__main__':
     )
 
     args = parser.parse_args()
-    if args.step == 'before_flop':
+    if args.step == 'compare':
+        compare_win_rate(args.cards, args.player_num, args.num_trials)
+    elif args.step == 'before_flop':
         save_before_flop_win_rate(args.player_num, args.num_trials)
     elif args.step == 'flop':
-        save_win_rate(args.index, args.player_num, args.num_trials, args.sample_count)
-    elif args.step == 'compare':
-        compare_win_rate(args.cards, args.player_num, args.num_trials)
+        save_flop_win_rate(args.index, args.player_num, args.num_trials)
+    elif args.step == 'turn':
+        save_turn_win_rate(args.index, args.player_num, args.num_trials, args.turn_sample_count)
+    elif args.step == 'river':
+        save_river_win_rate(args.index, args.player_num, args.num_trials, args.river_sample_count)
