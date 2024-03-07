@@ -16,7 +16,8 @@ DESTINATION=$1
 ssh "${DESTINATION%:*}" mkdir -p "${DESTINATION#*:}"
 
 # Define directories to copy
-DIRECTORIES=("examples" "new_agents" "our_agent" "rlcard" "agent_test")
+#DIRECTORIES=("examples" "new_agents" "our_agent" "rlcard" "agent_test")
+DIRECTORIES=("agent_test")
 
 # Loop over directories and copy each one
 for dir in "${DIRECTORIES[@]}"; do
