@@ -158,11 +158,12 @@ def compare_win_rate(cards: str, player_num=2, num_trials=2000):
     print('old of compare two players:', old)
 
 
-def calculate_win_rate_with_time(fn, p1_hand, community_card, player_num=2, num_trials=2000):
+def calculate_win_rate_with_time(fn, p1_hand, community_card, player_num=2, num_trials=2000, count=1):
     time1 = datetime.now()
-    win_rate = fn(p1_hand, community_card, player_num, num_trials)
+    for _ in range(count):
+        win_rate = fn(p1_hand, community_card, player_num, num_trials)
     time2 = datetime.now()
-    print('func name:{} win rate current:{}, use time:{}:'.format(fn.__name__, win_rate, time2 - time1))
+    print('func name:{} win rate current:{}, use time:{}:'.format(fn.__name__, win_rate, (time2 - time1) / count))
 
 
 if __name__ == '__main__':

@@ -1,5 +1,4 @@
 import itertools
-import pickle
 import argparse
 import time
 import pandas as pd
@@ -9,23 +8,6 @@ from cykhash import Int64toInt64Map
 from rlcard.games.limitholdem.cardcmp import CardComb, whole_cards, seven_cards_encode
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
-
-
-def handle_cards_values(cards_lst, file_name):
-    kv = {}
-    count = 0
-    size = len(cards_lst)
-    for cards in cards_lst:
-        cs = list(cards)
-        k = seven_cards_encode(cs)
-        v = CardComb().add_cards(cs).count_value()
-        kv[k] = v
-        count += 1
-        if count % 100000 == 0:
-            logging.info("process percent: {:.2f}%".format(count / size * 100))
-    # save to file
-    with open(file_name, 'wb') as f:
-        pickle.dump(kv, f)
 
 
 def save_cards_2_parquets(cards_lst, file_name, chunk_size=20000000):
@@ -61,8 +43,9 @@ def load_cards_values(file_name, total_size=133784560, chunk_size=20000000):
         logging.info("load parquet file: {}".format(file_name + str(i) + '.parquet'))
         df = pd.read_parquet(file_name + str(i) + '.parquet')
         logging.info("load parquet file: {} size:{}".format(file_name + str(i) + '.parquet', len(df)))
-        for _, row in df.iterrows():
-            cykhash_map[row['k']] = row['v']
+        keys = df['k'].values
+        values = df['v'].values
+        cykhash_map.update(zip(keys, values))
         logging.info("load parquet file: {} done".format(file_name + str(i) + '.parquet'))
     return cykhash_map
 
@@ -79,7 +62,7 @@ def main():
         '--action',
         type=str,
         default="save",
-        help='save/snap/load'
+        help='save/load'
     )
     args = parser.parse_args()
     if args.action == "save":
@@ -87,9 +70,6 @@ def main():
         hands_lst = list(itertools.combinations(whole_cards, 7))
         logging.info("combine hands list size is:{}".format(len(hands_lst)))
         save_cards_2_parquets(hands_lst, args.f)
-    elif args.action == "snap":
-        hands_lst = list(itertools.combinations(whole_cards, 7))
-        handle_cards_values(hands_lst, args.f)
     elif args.action == "load":
         logging.info("start to load cards values from parquet")
         ds = load_cards_values(args.f)
