@@ -7,7 +7,6 @@ from enum import Enum
 
 from rlcard.games.limitholdem.utils import compare_hands, Hand
 
-
 """card number index code"""
 card_idx_code = {
     'A': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, 'T': 9, 'J': 10, 'Q': 11, 'K': 12
@@ -38,12 +37,8 @@ whole_cards = ['CA', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'CT', 'CJ',
                'SA', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'ST', 'SJ', 'SQ', 'SK',
                ]
 
-cards_idx = {
-    'CA': 1, 'C2': 2, 'C3': 3, 'C4': 4, 'C5': 5, 'C6': 6, 'C7': 7, 'C8': 8, 'C9': 9, 'CT': 10, 'CJ': 11, 'CQ': 12, 'CK': 13,
-    'DA': 14, 'D2': 15, 'D3': 16, 'D4': 17, 'D5': 18, 'D6': 19, 'D7': 20, 'D8': 21, 'D9': 22, 'DT': 23, 'DJ': 24, 'DQ': 25, 'DK': 26,
-    'HA': 27, 'H2': 28, 'H3': 29, 'H4': 30, 'H5': 31, 'H6': 32, 'H7': 33, 'H8': 34, 'H9': 35, 'HT': 36, 'HJ': 37, 'HQ': 38, 'HK': 39,
-    'SA': 40, 'S2': 41, 'S3': 42, 'S4': 43, 'S5': 44, 'S6': 45, 'S7': 46, 'S8': 47, 'S9': 48, 'ST': 49, 'SJ': 50, 'SQ': 51, 'SK': 52,
-}
+"""cards index"""
+cards_idx = {card: i + 1 for i, card in enumerate(whole_cards)}
 
 
 def seven_cards_encode(cards):
@@ -53,6 +48,16 @@ def seven_cards_encode(cards):
     cs.sort()
     # 编码成一个整数
     return cs[0] + (cs[1] << 8) + (cs[2] << 16) + (cs[3] << 24) + (cs[4] << 32) + (cs[5] << 40) + (cs[6] << 48)
+
+
+def seven_cards_decode(code):
+    """7张牌解码"""
+    cs = [0] * 7
+    for i in range(7):
+        cs[i] = code & 0xFF
+        code >>= 8
+    cards = [whole_cards[c - 1] for c in cs]
+    return cards
 
 
 class Color(Enum):

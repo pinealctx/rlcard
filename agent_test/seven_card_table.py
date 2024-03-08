@@ -3,9 +3,9 @@ import argparse
 import logging
 
 from agent_test.win_rate import compare_hands
-from rlcard.games.limitholdem.cardcmp import CardComb, whole_cards
+from rlcard.games.limitholdem.cardcmp import CardComb, whole_cards, seven_cards_decode
 from agent_test.seven_card_encode import seven_cards_encode, load_cards_values
-from agent_test.win_rate import calculate_win_rate_with_time, calculate_win_rate_quick, calculate_win_rate_slow
+from agent_test.win_rate import calculate_win_rate_with_time, calculate_win_rate_quick
 from new_agents.our_agent.Probability_player import get_remaining_cards
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
@@ -57,7 +57,7 @@ def calculate_win_rate_use_table(p1_hand, community_card, player_num=2, num_tria
 def compare_win_rate_calculate_time(p1_hand, com_cards, player_num=2, num_trials=5000):
     calculate_win_rate_with_time(calculate_win_rate_use_table, p1_hand, com_cards, player_num, num_trials, 100)
     calculate_win_rate_with_time(calculate_win_rate_quick, p1_hand, com_cards, player_num, num_trials, 100)
-    calculate_win_rate_with_time(calculate_win_rate_slow, p1_hand, com_cards, player_num, num_trials, 100)
+    # calculate_win_rate_with_time(calculate_win_rate_slow, p1_hand, com_cards, player_num, num_trials, 100)
 
 
 def compare_players_action(player_num: int, num: int):
@@ -83,27 +83,30 @@ def compare_players_action(player_num: int, num: int):
 
 
 def before_flop_win_rate_action(player_num=2, num_trials=5000):
-    p1_hands = random.sample(whole_cards, 2)
-    com_cards = []
-    compare_win_rate_calculate_time(p1_hands, com_cards, player_num, num_trials)
+    for _ in range(10):
+        p1_hands = random.sample(whole_cards, 2)
+        com_cards = []
+        compare_win_rate_calculate_time(p1_hands, com_cards, player_num, num_trials)
 
 
 def flop_win_rate_action(player_num=2, num_trials=5000):
-    p1_hands = random.sample(whole_cards, 2)
-    com_cards = random.sample(whole_cards, 3)
-    compare_win_rate_calculate_time(p1_hands, com_cards, player_num, num_trials)
+    cal_win_rate_action(5, player_num, num_trials)
 
 
 def turn_win_rate_action(player_num=2, num_trials=5000):
-    p1_hands = random.sample(whole_cards, 2)
-    com_cards = random.sample(whole_cards, 4)
-    compare_win_rate_calculate_time(p1_hands, com_cards, player_num, num_trials)
+    cal_win_rate_action(6, player_num, num_trials)
 
 
 def river_win_rate_action(player_num=2, num_trials=5000):
-    p1_hands = random.sample(whole_cards, 2)
-    com_cards = random.sample(whole_cards, 5)
-    compare_win_rate_calculate_time(p1_hands, com_cards, player_num, num_trials)
+    cal_win_rate_action(7, player_num, num_trials)
+
+
+def cal_win_rate_action(card_num, player_num=2, num_trials=5000):
+    for _ in range(10):
+        sample_cards = random.sample(whole_cards, card_num)
+        hand_cards = sample_cards[:2]
+        comm_cards = sample_cards[2:]
+        compare_win_rate_calculate_time(hand_cards, comm_cards, player_num, num_trials)
 
 
 def load_cards_value_table(file_name):
@@ -137,15 +140,23 @@ def main():
         help='file name'
     )
     parser.add_argument(
+        '--cards_key',
+        type=int,
+        help='cards encoding key'
+    )
+    parser.add_argument(
         "--action",
         type=str,
         default="compare",
-        help="compare/before_flop/flop/turn/river"
+        help="decode/compare/before_flop/flop/turn/river"
     )
     args = parser.parse_args()
     logging.info("args:{}".format(args))
     load_cards_value_table(args.f)
 
+    if args.action == "decode":
+        cards = seven_cards_decode(args.cards_key)
+        logging.info("cards:{}".format(cards))
     if args.action == "compare":
         for i in range(2, 11):
             compare_players_action(i, args.num)
