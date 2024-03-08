@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+message Kv {
+  int64 k = 1;
+  int32 v = 2;
+}
+
+message Kvs {
+  repeated Kv s = 1;
+}
